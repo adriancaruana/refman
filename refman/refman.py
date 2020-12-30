@@ -4,6 +4,9 @@
 # optional arguments:
 #   -a (DOI|PMID|URL), --append (DOI|PMID|URL)
 #   -v , --verify
+# TODO:
+# Change `__file__` to wdir
+# Make package installable on PyPi
 import os
 import argparse
 from scihub import SciHub
@@ -95,6 +98,9 @@ class RefMan:
         if self.verify:
             self._verify_db()
 
+        if self.append is None:
+            LOGGER.info(f"No new publications added to database, nothing else to do.")
+            return
         self._finish()
 
 def main():
@@ -120,7 +126,7 @@ def main():
         LOGGER.warning(f"`REFMAN_DATA` not found in environment variables. Using {ROOTDIR} as data path.")
     PAPER_DIR.mkdir(exist_ok=True, parents=True)
 
-    refman = RefMan(append=args.append, verify=args.verify).run()
+    refman = RefMan(**vars(args)).run()
 
 
 if __name__ == "__main__":
