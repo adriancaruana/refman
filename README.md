@@ -5,10 +5,10 @@ RefMan - A Simple python-based reference manager
 `RefMan` capitalises on [Sci-hub](https://sci-hub.se/) and [crossref](https://crossref.org) to 
 provide a very simple Python-based reference manager.
 
-`RefMan`:
- 1. Maintains a database of references `ref.csv`,
- 2. Maintains a BibTeX bibliography file `ref.bib`, and
- 3. Maintains a directory of `pdf`'s in `papers/`.
+`RefMan` maintains:
+ 1. a database of references `ref.csv`,
+ 2. a BibTeX bibliography file `ref.bib`, and
+ 3. a directory of `pdf`'s in `papers/`.
 
 `RefMan`'s output is stored in `refman_data` in the current working directory, or sourced from a
 path listed under the `REFMAN_DATA` environment variable.

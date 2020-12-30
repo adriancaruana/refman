@@ -3,6 +3,7 @@
 """
 Sci-API Unofficial API
 [Search|Download] research papers from [scholar.google.com|sci-hub.io].
+Original Author:
 @author zaytoun
 """
 
