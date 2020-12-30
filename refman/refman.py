@@ -31,6 +31,7 @@ FMT_CITEPROC = "citeproc+json"
 @dataclasses.dataclass
 class RefMan:
     append: str = dataclasses.field(default=None)
+    lookup: str = dataclasses.field(default=None)
     verify: bool = dataclasses.field(default=False)
     db: pd.DataFrame = dataclasses.field(init=False, default=None)
 
@@ -77,6 +78,11 @@ class RefMan:
         r["scihub_url"] = metadata["url"]
         self.db = self.db.append(r, ignore_index=True)
 
+    def _lookup(self, doi: str):
+        LOGGER.info(f"Looking up filename for {doi=}.")
+        fname = next(r for _, r in self.db.iterrows() if r["DOI"] == doi)["filename"]
+        print(f"File for {doi=}: {os.path.join(PAPER_DIR / fname)}")
+
     def _verify_db(self):
         LOGGER.info("Verifying PDF's in database.")
         for fname in self.db["filename"]:
@@ -97,6 +103,9 @@ class RefMan:
         if self.append is not None:
             for doi in self.append:
                 self._process_doi(doi)
+
+        if self.lookup is not None:
+            self._lookup(self.lookup)
 
         if self.verify:
             self._verify_db()
@@ -121,11 +130,19 @@ def main():
         default=None,
     )
     parser.add_argument(
+        "-l",
+        "--lookup",
+        help=f"If it already exists in the database, return the filename of the pdf using it's DOI.",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
         "-v",
         "--verify",
         help=f"Verifies whether all entries in the database are present in {PAPER_DIR=}",
         action="store_true",
     )
+
     args = parser.parse_args()
 
     if not os.getenv("REFMAN_DATA", False):
