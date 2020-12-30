@@ -1,10 +1,7 @@
-#!/bin/python
 # RefMan - A Simple python-based reference manager.
-# Author: Adrian Caruana
-# optional arguments:
-#   -a (DOI|PMID|URL), --append (DOI|PMID|URL)
-#   -v , --verify
+# Author: Adrian Caruana (adrian@adriancaruana.com)
 import os
+import re
 import argparse
 import pandas as pd
 import dataclasses
@@ -17,9 +14,7 @@ from .scihub import SciHub
 LOGGER = logging.getLogger(f"refman.{__name__}")
 LOGGER.setLevel(logging.INFO)
 
-ROOTDIR = Path(
-    os.getenv("REFMAN_DATA", Path(os.getcwd()) / "refman_data")
-).absolute()
+ROOTDIR = Path(os.getenv("REFMAN_DATA", Path(os.getcwd()) / "refman_data")).absolute()
 PAPER_DIR = ROOTDIR / "papers"
 BIB_DB = ROOTDIR / "ref.csv"
 BIB_REF = ROOTDIR / "ref.bib"
@@ -58,6 +53,9 @@ class RefMan:
             self.db = pd.read_csv(BIB_DB)
         return self.db
 
+    def _get_bibtex_key(self, bibtex: str):
+        return re.search(r"{(.*?),", bibtex.split("\n")[0]).group(1)
+
     def _process_doi(self, doi: str):
         # Download and save the PDF using sci-hub
         if doi in self.db.get("DOI", list()):
@@ -71,17 +69,26 @@ class RefMan:
         LOGGER.info(f"For {doi=}: Retrieving structured reference info.")
         r = dict(requests.get(CROSSREF_URL.format(doi=doi, fmt=FMT_CITEPROC)).json())
         LOGGER.info(f"For {doi=}: Retrieving bibtex entry.")
-        r["bibtex"] = str(
-            requests.get(CROSSREF_URL.format(doi=doi, fmt=FMT_BIBTEX)).content
+        r["bibtex"] = (
+            bibtex := str(
+                requests.get(CROSSREF_URL.format(doi=doi, fmt=FMT_BIBTEX)).content
+            )
         )
+        r["bibtex_key"] = self._get_bibtex_key(bibtex)
         r["filename"] = metadata["name"]
         r["scihub_url"] = metadata["url"]
         self.db = self.db.append(r, ignore_index=True)
 
     def _lookup(self, doi: str):
         LOGGER.info(f"Looking up filename for {doi=}.")
-        fname = next(r for _, r in self.db.iterrows() if r["DOI"] == doi)["filename"]
-        print(f"File for {doi=}: {os.path.join(PAPER_DIR / fname)}")
+        row = next(r for _, r in self.db.iterrows() if r["DOI"] == doi)
+        print(
+            f"File for {doi=}: \n"
+            f"\tPDF Filename:\t{os.path.join(PAPER_DIR / row.filename)}\n"
+            f"\tBibTeX Key:\t{row.bibtex_key}\n"
+            f"\tTitle:\t\t{row.title}\n"
+            f"\tAuthor:\t\t{row.author}\n"
+        )
 
     def _verify_db(self):
         LOGGER.info("Verifying PDF's in database.")
@@ -124,7 +131,10 @@ def main():
         "-a",
         "--append",
         metavar="(DOI|PMID|URL)",
-        help="Tries to find and download the paper. Append multiple papers using a space-separated list",
+        help=(
+            "Tries to find and download the paper. "
+            "Append multiple papers using a space-separated list"
+        ),
         type=str,
         nargs="+",
         default=None,
@@ -132,7 +142,10 @@ def main():
     parser.add_argument(
         "-l",
         "--lookup",
-        help=f"If it already exists in the database, return the filename of the pdf using it's DOI.",
+        help=(
+            "If it already exists in the database, "
+            "return the most useful metadata of the paper using it's DOI."
+        ),
         type=str,
         default=None,
     )

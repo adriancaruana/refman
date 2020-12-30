@@ -15,6 +15,12 @@ path listed under the `REFMAN_DATA` environment variable.
 
 ## How to use `RefMan`
 
+There are two ways in which `RefMan` can be used:
+ 1. Adding new papers to the database. This is done using the `-a, --append` option.
+ 2. Looking up (printing) the important metadata (`pdf` filename, BibTeX key, Author, and Title) using the DOI of a paper which exists in the database. This is done using the `-l, --lookup` option.
+
+References can be appended and looked-up at the same time.
+
 ```
 usage: refman [-h] [-a (DOI|PMID|URL) [(DOI|PMID|URL) ...]] [-l LOOKUP] [-v]
 
