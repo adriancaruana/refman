@@ -23,7 +23,7 @@ setup(
         "Programming Language :: Python :: 3.8",
     ],
     packages=["refman"],
-    keywords = ['Reference', 'Manager', 'BibTeX', 'crossref'],
+    keywords=["Reference", "Manager", "BibTeX", "crossref"],
     include_package_data=True,
     install_requires=[
         "pandas",

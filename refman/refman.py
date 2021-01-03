@@ -15,7 +15,13 @@ from tqdm import tqdm
 from typing import Iterable, List, Tuple
 
 from ._constants import (
-    REFMAN_DIR, PAPER_DIR, BIB_DB, BIB_REF, CROSSREF_URL, FMT_BIBTEX, FMT_CITEPROC
+    REFMAN_DIR,
+    PAPER_DIR,
+    BIB_DB,
+    BIB_REF,
+    CROSSREF_URL,
+    FMT_BIBTEX,
+    FMT_CITEPROC,
 )
 from ._utils import md5_hexdigest, is_valid_url
 from ._scihub import SciHub
@@ -29,15 +35,16 @@ SH = SciHub()
 def update_status(msg: str):
     global STATUS_HANDLER
     if not isinstance(STATUS_HANDLER, tqdm):
+        LOGGER.info(msg)
         return
     STATUS_HANDLER.set_postfix_str(msg)
 
+
 def progress_with_status(it: Iterable):
     global STATUS_HANDLER
-    ncols = min(len(it), 20)
-    barfmt = "{l_bar}{bar:20}{r_bar}{bar:-20b}"
+    ncols = str(min(len(it), 20))
+    barfmt = "{l_bar}{bar:" + ncols + "}{r_bar}{bar:-" + ncols + "b}"
     return (STATUS_HANDLER := tqdm(it, bar_format=barfmt))
-
 
 
 @dataclasses.dataclass
@@ -53,7 +60,7 @@ class Paper:
 
     @property
     def paper_path(self):
-        return REFMAN_DIR / '_'.join((self._bibtex_key, md5_hexdigest(self.bibtex)[:7]))
+        return REFMAN_DIR / "_".join((self._bibtex_key, md5_hexdigest(self.bibtex)[:7]))
 
     @property
     def meta_path(self):
@@ -65,7 +72,7 @@ class Paper:
 
     @property
     def pdf_path(self):
-        return self.paper_path / (self._bibtex_key + '.pdf')
+        return self.paper_path / (self._bibtex_key + ".pdf")
 
     @property
     def _bibtex_key(self) -> str:
@@ -79,18 +86,18 @@ class Paper:
     def parse_from_disk(cls, paper_path: Path, read_pdf: bool = False):
         """Returns a `Paper` object from disk."""
         update_status(f"{paper_path}: Loading reference from disk.")
-        with open(paper_path / cls.meta_name, 'r') as f:
+        with open(paper_path / cls.meta_name, "r") as f:
             meta = json.load(f)
-        with open(paper_path / cls.bibtex_name, 'r') as f:
+        with open(paper_path / cls.bibtex_name, "r") as f:
             bibtex = f.read()
         pdf_data = None
         if read_pdf:
             try:
-                pdf_path = next(paper_path.glob('*.pdf'))
+                pdf_path = next(paper_path.glob("*.pdf"))
                 update_status(f"{paper_path}: Found {pdf_path.name}.")
             except StopIteration as e:
                 update_status(f"{paper_path}: No PDF found.")
-            with open(paper_path / pdf_path, 'wb') as f:
+            with open(paper_path / pdf_path, "wb") as f:
                 pdf_data = f.read()
         return cls(meta=meta, bibtex=bibtex, pdf_data=pdf_data)
 
@@ -115,9 +122,9 @@ class Paper:
 
     @classmethod
     def new_paper_from_bibtex(
-            cls,
-            bibtex_str: str,
-            pdf_path: str = None,
+        cls,
+        bibtex_str: str,
+        pdf_path: str = None,
     ):
         """Adds a new paper to the `papers` dir from a bibtex_str.
         Optionally: Associate a pdf with the paper via local path or url
@@ -128,7 +135,7 @@ class Paper:
         pdf_data = None
         if is_valid_url(pdf_path):
             r = requests.get(pdf_path)
-            if  'application/pdf' not in r.headers['Content-Type']:
+            if "application/pdf" not in r.headers["Content-Type"]:
                 LOGGER.warning(f"{bibtex_key}: {pdf_path} did not contain a PDF.")
                 pdf_data = None
             else:
@@ -136,7 +143,7 @@ class Paper:
                 pdf_data = r.content
         else:
             if pdf_path is not None and Path(pdf_path).exists():
-                with open(pdf_path, 'r') as f:
+                with open(pdf_path, "r") as f:
                     LOGGER.info(f"{bibtex_key}: Reading PDF.")
                     pdf_data = f.read()
         paper = Paper(meta=meta, bibtex=bibtex_str, pdf_data=pdf_data)
@@ -147,16 +154,15 @@ class Paper:
     def _get_pdf_data(cls, doi: str, citeproc_json: dict) -> bytes:
         # Try to download from other available sources before sci-hub
         if "link" in citeproc_json.keys():
-            update_status(
-                f"{doi=}: Found PDF link from crossref, attempting download."
-            )
+            update_status(f"{doi=}: Found PDF link from crossref, attempting download.")
             try:
                 link = next(
-                    l["URL"] for l in citeproc_json["link"]
+                    l["URL"]
+                    for l in citeproc_json["link"]
                     if l["content-type"] == "application/pdf"
                 )
                 r = requests.get(link)
-                if  'application/pdf' not in r.headers['Content-Type']:
+                if "application/pdf" not in r.headers["Content-Type"]:
                     raise TypeError(f"Link did not contain a PDF.")
                 update_status(f"{doi=}: Got PDF.")
                 return r.content
@@ -183,12 +189,12 @@ class Paper:
         return bytes()
 
     def to_disk(self):
-        with open(self.meta_path, 'w') as f:
+        with open(self.meta_path, "w") as f:
             json.dump(self.meta, f)
-        with open(self.bibtex_path, 'w') as f:
+        with open(self.bibtex_path, "w") as f:
             f.write(self.bibtex)
         if self.pdf_data is not None:
-            with open(self.pdf_path, 'wb') as f:
+            with open(self.pdf_path, "wb") as f:
                 f.write(self.pdf_data)
 
 
@@ -211,19 +217,17 @@ class RefMan:
 
     def _get_paper_meta(self, paper) -> dict:
         return {
-            'doi': paper.meta.get("doi", None),
-            'bibtex_path': str(paper.bibtex_path),
-            'bibtex_key': str(paper._bibtex_key),
+            "doi": paper.meta.get("doi", None),
+            "bibtex_path": str(paper.bibtex_path),
+            "bibtex_key": str(paper._bibtex_key),
         }
 
     def append_to_db(self, paper: Paper):
-        self.db = self.db.append(
-            self._get_paper_meta(paper), ignore_index=True
-        )
+        self.db = self.db.append(self._get_paper_meta(paper), ignore_index=True)
 
     def add_using_doi(self, doi: List[str]):
         if doi is not None:
-            doi_li = list(self.db.get('doi', list()))
+            doi_li = list(self.db.get("doi", list()))
             to_append = list(filter(lambda x: x not in doi_li, doi))
             if not to_append:
                 LOGGER.warning(
@@ -237,9 +241,7 @@ class RefMan:
         self._update_db()
 
     def add_using_bibtex(self, bibtex_str: str, pdf_path: Path):
-        paper = Paper.new_paper_from_bibtex(
-            bibtex_str=bibtex_str, pdf_path=pdf_path
-        )
+        paper = Paper.new_paper_from_bibtex(bibtex_str=bibtex_str, pdf_path=pdf_path)
         self.append_to_db(paper)
         self._update_db()
 
@@ -248,7 +250,8 @@ class RefMan:
         LOGGER.info(f"Writing bibliography file to '{BIB_REF}'.")
         with open(BIB_REF, "w") as f:
             for paper_bibtex in self.db["bibtex_path"]:
-                f.write(open(paper_bibtex, 'r').read() + "\n")
+                f.write(open(paper_bibtex, "r").read() + "\n")
+
 
 def main():
     parser = argparse.ArgumentParser(
