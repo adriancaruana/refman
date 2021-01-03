@@ -25,7 +25,11 @@ setup(
     packages=["refman"],
     keywords = ['Reference', 'Manager', 'BibTeX', 'crossref'],
     include_package_data=True,
-    install_requires=[],
+    install_requires=[
+        "pandas",
+        "bibtexparser",
+        "tqdm",
+    ],
     entry_points={
         "console_scripts": [
             "refman=refman.refman:main",
