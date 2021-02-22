@@ -28,6 +28,9 @@ setup(
     install_requires=[
         "pandas",
         "bibtexparser",
+        "bs4",
+        "numpy",
+        "retrying",
         "tqdm",
     ],
     entry_points={
