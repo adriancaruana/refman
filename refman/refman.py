@@ -20,10 +20,12 @@ from ._constants import (
     BIB_DB,
     BIB_REF,
     CROSSREF_URL,
+    ARXIV_BIBTEX_URL,
+    ARXIV_PDF_URL,
     FMT_BIBTEX,
     FMT_CITEPROC,
 )
-from ._utils import md5_hexdigest, is_valid_url
+from ._utils import md5_hexdigest, is_valid_url, is_valid_doi
 from ._scihub import SciHub
 
 STATUS_HANDLER = None
@@ -102,9 +104,25 @@ class Paper:
         return cls(meta=meta, bibtex=bibtex, pdf_data=pdf_data)
 
     @classmethod
+    def new_paper_from_arxiv(cls, arxiv: str):
+        """Adds a new paper to the `papers` dir from an arxiv str"""
+        update_status(f"{arxiv=}: Retrieving bibtex entry.")
+        bib_str = requests.get(
+            ARXIV_BIBTEX_URL.format(arxiv=arxiv)
+        ).content.decode("utf-8")
+        meta = dict(bibtexparser.loads(bib_str).entries[0])
+        update_status(f"{arxiv=}: Retrieving PDF.")
+        pdf_data = requests.get(ARXIV_PDF_URL.format(arxiv=arxiv)).content
+        paper = cls(meta=meta, bibtex=bib_str, pdf_data=pdf_data)
+        paper.to_disk()
+        return paper
+
+    @classmethod
     def new_paper_from_doi(cls, doi: str):
         """Adds a new paper to the `papers` dir from a DOI"""
         # Fetch the reference data from cross-ref
+        if not is_valid_doi(doi):
+            raise ValueError(f"Provided {doi=} is not a valid DOI.")
         update_status(f"{doi=}: Retrieving structured reference info.")
         citeproc_json = dict(
             requests.get(CROSSREF_URL.format(doi=doi, fmt=FMT_CITEPROC)).json()
@@ -114,7 +132,7 @@ class Paper:
             CROSSREF_URL.format(doi=doi, fmt=FMT_BIBTEX)
         ).content.decode("utf-8")
         update_status(f"{doi=}: Retrieving PDF.")
-        pdf_data = cls._get_pdf_data(doi, citeproc_json)
+        pdf_data = cls._get_pdf_data_from_doi(doi, citeproc_json)
         meta = dict(bibtexparser.loads(bib_str).entries[0])
         paper = cls(meta=meta, bibtex=bib_str, pdf_data=pdf_data)
         paper.to_disk()
@@ -151,7 +169,7 @@ class Paper:
         return paper
 
     @classmethod
-    def _get_pdf_data(cls, doi: str, citeproc_json: dict) -> bytes:
+    def _get_pdf_data_from_doi(cls, doi: str, citeproc_json: dict) -> bytes:
         # Try to download from other available sources before sci-hub
         if "link" in citeproc_json.keys():
             update_status(f"{doi=}: Found PDF link from crossref, attempting download.")
@@ -217,13 +235,30 @@ class RefMan:
 
     def _get_paper_meta(self, paper) -> dict:
         return {
-            "doi": paper.meta.get("doi", None),
+            "doi": paper.meta.get("doi", None),  # For parsing via DOI
+            "eprint": paper.meta.get("eprint", None),  # For parsing via arxiv
             "bibtex_path": str(paper.bibtex_path),
             "bibtex_key": str(paper._bibtex_key),
         }
 
     def append_to_db(self, paper: Paper):
         self.db = self.db.append(self._get_paper_meta(paper), ignore_index=True)
+
+    def add_using_arxiv(self, arxiv: List[str]):
+        if arxiv is not None:
+            arxiv_li = list(self.db.get("eprint", list()))
+            print(arxiv_li)
+            to_append = list(filter(lambda x: x not in arxiv_li, arxiv))
+            if not to_append:
+                LOGGER.warning(
+                    "No papers to add to the database (they already exist!). Finishing."
+                )
+                return
+            paper_it = progress_with_status(to_append)
+            papers = list(map(Paper.new_paper_from_arxiv, paper_it))
+            for paper in papers:
+                self.append_to_db(paper)
+        self._update_db()
 
     def add_using_doi(self, doi: List[str]):
         if doi is not None:
@@ -262,10 +297,23 @@ def main():
         "--doi",
         help=(
             "Tries to find and download the paper using the DOI. "
-            "Append multiple papers using a space-separated list"
+            "Append multiple papers using a space-separated list."
         ),
         type=str,
         nargs="+",
+        required=False,
+        default=None,
+    )
+    parser.add_argument(
+        "-a",
+        "--arxiv",
+        help=(
+            "Gets the paper from an Arxiv reference string. "
+            "Append multiple papers using a space-separated list."
+        ),
+        type=str,
+        nargs="+",
+        required=False,
         default=None,
     )
     parser.add_argument(
@@ -289,9 +337,9 @@ def main():
         default=None,
     )
     args = parser.parse_args()
-    if not bool(args.doi) ^ (bool(args.bibtex) or bool(args.pdf)):
+    if sum([bool(args.doi), (bool(args.bibtex) or bool(args.pdf)), bool(args.arxiv)]) != 1:
         raise ValueError(
-            f"Please provide either `-d, -doi`, OR `-b, --bibtex`. "
+            f"Please provide either `-d, -doi`, OR `-b, --bibtex`, OR `-a, --arxiv`. "
             f"`-p, --pdf` can only be used with `-b, --bibtex`."
         )
 
@@ -302,6 +350,8 @@ def main():
     REFMAN_DIR.mkdir(exist_ok=True, parents=True)
 
     refman = RefMan()
+    if bool(args.arxiv):
+        refman.add_using_arxiv(arxiv=args.arxiv)
     if bool(args.doi):
         refman.add_using_doi(doi=args.doi)
     if bool(args.bibtex):

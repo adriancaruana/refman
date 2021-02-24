@@ -12,6 +12,8 @@ url_regex = re.compile(
     re.IGNORECASE,
 )
 
+doi_regex = r"\b(10[.][0-9]{4,}(?:[.][0-9]+)*/(?:(?![\"&\'<>])\S)+)\b"
+
 
 def md5_hexdigest(x: str):
     return hashlib.md5(x.encode("utf-8")).hexdigest()
@@ -19,3 +21,7 @@ def md5_hexdigest(x: str):
 
 def is_valid_url(url: str):
     return re.match(url_regex, url) is not None
+
+
+def is_valid_doi(doi: str):
+    return bool(re.match(doi_regex, doi))
