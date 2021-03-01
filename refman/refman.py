@@ -249,7 +249,6 @@ class RefMan:
     def add_using_arxiv(self, arxiv: List[str]):
         if arxiv is not None:
             arxiv_li = list(self.db.get("eprint", list()))
-            print(arxiv_li)
             to_append = list(filter(lambda x: x not in arxiv_li, arxiv))
             if not to_append:
                 LOGGER.warning(
