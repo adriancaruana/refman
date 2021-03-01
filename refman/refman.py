@@ -19,6 +19,8 @@ from ._constants import (
     PAPER_DIR,
     BIB_DB,
     BIB_REF,
+    META_NAME,
+    BIBTEX_NAME,
     CROSSREF_URL,
     ARXIV_BIBTEX_URL,
     ARXIV_PDF_URL,
@@ -54,8 +56,8 @@ class Paper:
     meta: dict
     bibtex: str
     pdf_data: bytes = dataclasses.field(default=None)
-    meta_name: str = "meta.json"
-    bibtex_name: str = ".bib"
+    meta_name: str = dataclasses.field(init=False, default=META_NAME)
+    bibtex_name: str = dataclasses.field(init=False, default=BIBTEX_NAME)
 
     def __post_init__(self):
         self.paper_path.mkdir(exist_ok=True, parents=True)
@@ -231,7 +233,7 @@ class RefMan:
             self.db = pd.DataFrame(None)
 
     def _paper_paths_list(self):
-        return list(filter(lambda x: not x.is_file(), REFMAN_DIR.glob("*")))
+        return list(map(lambda x: x.parent, REFMAN_DIR.rglob(META_NAME)))
 
     def _get_paper_meta(self, paper) -> dict:
         return {
