@@ -26,10 +26,11 @@ setup(
     keywords=["Reference", "Manager", "BibTeX", "crossref"],
     include_package_data=True,
     install_requires=[
-        "pandas",
+        "arxiv2bib",
         "bibtexparser",
         "bs4",
         "numpy",
+        "pandas",
         "retrying",
         "tqdm",
     ],

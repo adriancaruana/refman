@@ -1,6 +1,7 @@
 # RefMan - A Simple python-based reference manager.
 # Author: Adrian Caruana (adrian@adriancaruana.com)
 import argparse
+from arxiv2bib import arxiv2bib
 import bibtexparser
 import dataclasses
 import hashlib
@@ -22,12 +23,11 @@ from ._constants import (
     META_NAME,
     BIBTEX_NAME,
     CROSSREF_URL,
-    ARXIV_BIBTEX_URL,
     ARXIV_PDF_URL,
     FMT_BIBTEX,
     FMT_CITEPROC,
 )
-from ._utils import md5_hexdigest, is_valid_url, is_valid_doi
+from ._utils import md5_hexdigest, is_valid_url, is_valid_doi, fix_arxiv2bib_fmt
 from ._scihub import SciHub
 
 STATUS_HANDLER = None
@@ -109,9 +109,7 @@ class Paper:
     def new_paper_from_arxiv(cls, arxiv: str):
         """Adds a new paper to the `papers` dir from an arxiv str"""
         update_status(f"{arxiv=}: Retrieving bibtex entry.")
-        bib_str = requests.get(
-            ARXIV_BIBTEX_URL.format(arxiv=arxiv)
-        ).content.decode("utf-8")
+        bib_str = fix_arxiv2bib_fmt(arxiv2bib([arxiv])[0])
         meta = dict(bibtexparser.loads(bib_str).entries[0])
         update_status(f"{arxiv=}: Retrieving PDF.")
         pdf_data = requests.get(ARXIV_PDF_URL.format(arxiv=arxiv)).content
