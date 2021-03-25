@@ -143,11 +143,18 @@ class Paper:
         cls,
         bibtex_str: str,
         pdf_path: str = None,
+        key: str = None,
     ):
         """Adds a new paper to the `papers` dir from a bibtex_str.
         Optionally: Associate a pdf with the paper via local path or url
         """
-        meta = dict(bibtexparser.loads(bibtex_str).entries[0])
+        bib = bibtexparser.loads(bibtex_str)
+        if not bib.entries[0].get("DOI", False):
+            bib.entries[0]["DOI"] = ""
+        if key is not None:
+            bib.entries[0]["ID"] = key
+            bibtex_str = bibtexparser.dumps(bib)
+        meta = dict(bib.entries[0])
         bibtex_key = cls._bibtex_key_from_bibtex_str(meta)
         LOGGER.info(f"{bibtex_key}: Parsing BibTeX string.")
         pdf_data = None
@@ -274,8 +281,17 @@ class RefMan:
                 self.append_to_db(paper)
         self._update_db()
 
-    def add_using_bibtex(self, bibtex_str: str, pdf_path: Path):
-        paper = Paper.new_paper_from_bibtex(bibtex_str=bibtex_str, pdf_path=pdf_path)
+    def add_using_bibtex(
+            self,
+            bibtex_str: str,
+            pdf_path: Path,
+            key: str = None
+    ):
+        paper = Paper.new_paper_from_bibtex(
+            bibtex_str=bibtex_str,
+            pdf_path=pdf_path,
+            key=key
+        )
         self.append_to_db(paper)
         self._update_db()
 
@@ -335,6 +351,15 @@ def main():
         type=str,
         default=None,
     )
+    parser.add_argument(
+        "-k",
+        "--key",
+        help=(
+            "Explicitly define the key to use (without hash) for the paper."
+        ),
+        type=str,
+        default=None,
+    )
     args = parser.parse_args()
     if sum([bool(args.doi), (bool(args.bibtex) or bool(args.pdf)), bool(args.arxiv)]) != 1:
         raise ValueError(
@@ -354,7 +379,11 @@ def main():
     if bool(args.doi):
         refman.add_using_doi(doi=args.doi)
     if bool(args.bibtex):
-        refman.add_using_bibtex(bibtex_str=args.bibtex, pdf_path=args.pdf)
+        refman.add_using_bibtex(
+            bibtex_str=args.bibtex,
+            pdf_path=args.pdf,
+            key=args.key,
+        )
 
 
 if __name__ == "__main__":
