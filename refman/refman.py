@@ -118,7 +118,7 @@ class Paper:
         return paper
 
     @classmethod
-    def new_paper_from_doi(cls, doi: str):
+    def new_paper_from_doi(cls, doi: str, pdf: str = None):
         """Adds a new paper to the `papers` dir from a DOI"""
         # Fetch the reference data from cross-ref
         if not is_valid_doi(doi):
@@ -132,7 +132,10 @@ class Paper:
             CROSSREF_URL.format(doi=doi, fmt=FMT_BIBTEX)
         ).content.decode("utf-8")
         update_status(f"{doi=}: Retrieving PDF.")
-        pdf_data = cls._get_pdf_data_from_doi(doi, citeproc_json)
+        if pdf is not None:
+            pdf_data = cls._get_pdf_data_from_path(pdf_path=pdf)
+        if pdf_data is None:
+            pdf_data = cls._get_pdf_data_from_doi(doi, citeproc_json)
         meta = dict(bibtexparser.loads(bib_str).entries[0])
         paper = cls(meta=meta, bibtex=bib_str, pdf_data=pdf_data)
         paper.to_disk()
@@ -157,6 +160,13 @@ class Paper:
         meta = dict(bib.entries[0])
         bibtex_key = cls._bibtex_key_from_bibtex_str(meta)
         LOGGER.info(f"{bibtex_key}: Parsing BibTeX string.")
+        pdf_data = cls._get_pdf_data_from_path(pdf_path)
+        paper = Paper(meta=meta, bibtex=bibtex_str, pdf_data=pdf_data)
+        paper.to_disk()
+        return paper
+
+    @classmethod
+    def _get_pdf_data_from_path(cls, pdf_path: str) -> bytes:
         pdf_data = None
         if is_valid_url(pdf_path):
             r = requests.get(pdf_path)
@@ -164,16 +174,15 @@ class Paper:
                 LOGGER.warning(f"{bibtex_key}: {pdf_path} did not contain a PDF.")
                 pdf_data = None
             else:
-                LOGGER.info(f"{bibtex_key}: Got PDF.")
+                LOGGER.info(f"{bibtex_key}: Got PDF from URL.")
                 pdf_data = r.content
         else:
             if pdf_path is not None and Path(pdf_path).exists():
                 with open(pdf_path, "r") as f:
-                    LOGGER.info(f"{bibtex_key}: Reading PDF.")
+                    LOGGER.info(f"{bibtex_key}: Got PDF from DISK.")
                     pdf_data = f.read()
-        paper = Paper(meta=meta, bibtex=bibtex_str, pdf_data=pdf_data)
-        paper.to_disk()
-        return paper
+        
+        return pdf_data
 
     @classmethod
     def _get_pdf_data_from_doi(cls, doi: str, citeproc_json: dict) -> bytes:
@@ -189,7 +198,7 @@ class Paper:
                 r = requests.get(link)
                 if "application/pdf" not in r.headers["Content-Type"]:
                     raise TypeError(f"Link did not contain a PDF.")
-                update_status(f"{doi=}: Got PDF.")
+                update_status(f"{doi=}: Got PDF from CITEPROC.")
                 return r.content
             except StopIteration as e:
                 update_status(
@@ -204,7 +213,7 @@ class Paper:
         update_status(f"{doi=}: Falling back to sci-hub for PDF retrieval.")
         try:
             pdf_data = SH.fetch(doi)["pdf"]
-            update_status(f"{doi=}: Got PDF.")
+            update_status(f"{doi=}: Got PDF from SCI-HUB.")
             return pdf_data
         except Exception as e:
             LOGGER.warning(
@@ -266,19 +275,20 @@ class RefMan:
                 self.append_to_db(paper)
         self._update_db()
 
-    def add_using_doi(self, doi: List[str]):
+    def add_using_doi(self, doi: List[str], pdf: List[str]):
         if doi is not None:
             doi_li = list(self.db.get("doi", list()))
-            to_append = list(filter(lambda x: x not in doi_li, doi))
-            if not to_append:
+            args_li = list(filter(lambda x: x[0] not in doi_li, zip(doi, pdf)))
+            if not args_li:
                 LOGGER.warning(
                     "No papers to add to the database (they already exist!). Finishing."
                 )
                 return
-            paper_it = progress_with_status(to_append)
-            papers = list(map(Paper.new_paper_from_doi, paper_it))
-            for paper in papers:
+            papers = list()
+            for args in progress_with_status(args_li):
+                papers.append((paper := Paper.new_paper_from_doi(*args)))
                 self.append_to_db(paper)
+
         self._update_db()
 
     def add_using_bibtex(
@@ -361,10 +371,9 @@ def main():
         default=None,
     )
     args = parser.parse_args()
-    if sum([bool(args.doi), (bool(args.bibtex) or bool(args.pdf)), bool(args.arxiv)]) != 1:
+    if bool(args.arxiv) and bool(args.pdf):
         raise ValueError(
-            f"Please provide either `-d, -doi`, OR `-b, --bibtex`, OR `-a, --arxiv`. "
-            f"`-p, --pdf` can only be used with `-b, --bibtex`."
+            f"`-p, --pdf` cannot be used with `-a, --arxiv`."
         )
 
     if not os.getenv("REFMAN_DATA", False):
@@ -377,7 +386,10 @@ def main():
     if bool(args.arxiv):
         refman.add_using_arxiv(arxiv=args.arxiv)
     if bool(args.doi):
-        refman.add_using_doi(doi=args.doi)
+        refman.add_using_doi(
+            doi=args.doi,
+            pdf=args.pdf,
+        )
     if bool(args.bibtex):
         refman.add_using_bibtex(
             bibtex_str=args.bibtex,
