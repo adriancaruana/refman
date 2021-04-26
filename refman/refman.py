@@ -36,10 +36,10 @@ LOGGER.setLevel(logging.INFO)
 SH = SciHub()
 
 
-def update_status(msg: str):
+def update_status(msg: str, level_attr: str = 'info'):
     global STATUS_HANDLER
     if not isinstance(STATUS_HANDLER, tqdm):
-        LOGGER.info(msg)
+        LOGGER.__getattr__(level_attr).__call__(msg)
         return
     STATUS_HANDLER.set_postfix_str(msg)
 
@@ -124,14 +124,19 @@ class Paper:
         if not is_valid_doi(doi):
             raise ValueError(f"Provided {doi=} is not a valid DOI.")
         update_status(f"{doi=}: Retrieving structured reference info.")
-        citeproc_json = dict(
-            requests.get(CROSSREF_URL.format(doi=doi, fmt=FMT_CITEPROC)).json()
-        )
+        r = requests.get((url := CROSSREF_URL.format(doi=doi, fmt=FMT_CITEPROC)))
+        if not r.ok:
+            raise ValueError(
+                "Could not get citeproc+json from crossref.\n"
+                f"HTTP Response: {r.status_code}\nDOI: {doi}\nURL: {url}"
+            )
+        citeproc_json = dict(r.json())
         update_status(f"{doi=}: Retrieving bibtex entry.")
         bib_str = requests.get(
             CROSSREF_URL.format(doi=doi, fmt=FMT_BIBTEX)
         ).content.decode("utf-8")
         update_status(f"{doi=}: Retrieving PDF.")
+        pdf_data = None
         if pdf is not None:
             pdf_data = cls._get_pdf_data_from_path(pdf_path=pdf)
         if pdf_data is None:
@@ -160,7 +165,9 @@ class Paper:
         meta = dict(bib.entries[0])
         bibtex_key = cls._bibtex_key_from_bibtex_str(meta)
         LOGGER.info(f"{bibtex_key}: Parsing BibTeX string.")
-        pdf_data = cls._get_pdf_data_from_path(pdf_path)
+        pdf_data = None
+        if pdf_data is not None:
+            pdf_data = cls._get_pdf_data_from_path(pdf_path)
         paper = Paper(meta=meta, bibtex=bibtex_str, pdf_data=pdf_data)
         paper.to_disk()
         return paper
@@ -260,41 +267,22 @@ class RefMan:
     def append_to_db(self, paper: Paper):
         self.db = self.db.append(self._get_paper_meta(paper), ignore_index=True)
 
-    def add_using_arxiv(self, arxiv: List[str]):
-        if arxiv is not None:
-            arxiv_li = list(self.db.get("eprint", list()))
-            to_append = list(filter(lambda x: x not in arxiv_li, arxiv))
-            if not to_append:
-                LOGGER.warning(
-                    "No papers to add to the database (they already exist!). Finishing."
-                )
-                return
-            paper_it = progress_with_status(to_append)
-            papers = list(map(Paper.new_paper_from_arxiv, paper_it))
-            for paper in papers:
-                self.append_to_db(paper)
+    def add_using_arxiv(self, arxiv: str):
+        if arxiv is not None and arxiv not in list(self.db.get("eprint", list())):
+            self.append_to_db(Paper.new_paper_from_arxiv(arxiv))
+
         self._update_db()
 
-    def add_using_doi(self, doi: List[str], pdf: List[str]):
-        if doi is not None:
-            doi_li = list(self.db.get("doi", list()))
-            args_li = list(filter(lambda x: x[0] not in doi_li, zip(doi, pdf)))
-            if not args_li:
-                LOGGER.warning(
-                    "No papers to add to the database (they already exist!). Finishing."
-                )
-                return
-            papers = list()
-            for args in progress_with_status(args_li):
-                papers.append((paper := Paper.new_paper_from_doi(*args)))
-                self.append_to_db(paper)
+    def add_using_doi(self, doi: str, pdf: str):
+        if doi is not None and doi not in list(self.db.get("doi", list())):
+            self.append_to_db(Paper.new_paper_from_doi(doi, pdf))
 
         self._update_db()
 
     def add_using_bibtex(
             self,
             bibtex_str: str,
-            pdf_path: Path,
+            pdf_path: str,
             key: str = None
     ):
         paper = Paper.new_paper_from_bibtex(
@@ -322,10 +310,8 @@ def main():
         "--doi",
         help=(
             "Tries to find and download the paper using the DOI. "
-            "Append multiple papers using a space-separated list."
         ),
         type=str,
-        nargs="+",
         required=False,
         default=None,
     )
@@ -334,10 +320,8 @@ def main():
         "--arxiv",
         help=(
             "Gets the paper from an Arxiv reference string. "
-            "Append multiple papers using a space-separated list."
         ),
         type=str,
-        nargs="+",
         required=False,
         default=None,
     )
@@ -384,18 +368,16 @@ def main():
 
     refman = RefMan()
     if bool(args.arxiv):
-        refman.add_using_arxiv(arxiv=args.arxiv)
+        for job_kwargs in progress_with_status([{'arxiv': args.arxiv}]):
+            refman.add_using_arxiv(**job_kwargs)
     if bool(args.doi):
-        refman.add_using_doi(
-            doi=args.doi,
-            pdf=args.pdf,
-        )
+        for job_kwargs in progress_with_status([{'doi': args.doi, 'pdf': args.pdf}]):
+            refman.add_using_doi(**job_kwargs)
     if bool(args.bibtex):
-        refman.add_using_bibtex(
-            bibtex_str=args.bibtex,
-            pdf_path=args.pdf,
-            key=args.key,
-        )
+        for job_kwargs in progress_with_status(
+                [{'bibtex_str': args.bibtex, 'pdf_path': args.pdf, 'key': args.key}]
+        ):
+            refman.add_using_bibtex(**job_kwargs)
 
 
 if __name__ == "__main__":
