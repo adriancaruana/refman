@@ -258,8 +258,8 @@ class RefMan:
 
     def _get_paper_meta(self, paper) -> dict:
         return {
-            "doi": paper.meta.get("doi", None),  # For parsing via DOI
-            "eprint": paper.meta.get("eprint", None),  # For parsing via arxiv
+            "doi": paper.meta.get("doi", ""),  # For parsing via DOI
+            "eprint": paper.meta.get("eprint", ""),  # For parsing via arxiv
             "bibtex_path": str(paper.bibtex_path),
             "bibtex_key": str(paper._bibtex_key),
         }
@@ -274,7 +274,13 @@ class RefMan:
         self._update_db()
 
     def add_using_doi(self, doi: str, pdf: str):
-        if doi is not None and doi not in list(self.db.get("doi", list())):
+        if (
+                doi is not None and
+                doi.lower() not in map(
+                    lambda x: x.lower(),
+                    self.db.get("doi", list())
+                )
+        ):
             self.append_to_db(Paper.new_paper_from_doi(doi, pdf))
 
         self._update_db()
