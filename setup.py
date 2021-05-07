@@ -10,7 +10,7 @@ README = (HERE / "README.md").read_text()
 # This call to setup() does all the work
 setup(
     name="refman",
-    version="0.0.1",
+    version="0.0.2",
     description="RefMan - A Simple python-based reference manager",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -38,7 +38,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "refman=refman.refman:main",
+            "refman=refman.refman:APP",
         ]
     },
 )
