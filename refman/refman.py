@@ -1,19 +1,21 @@
 # RefMan - A Simple python-based reference manager.
 # Author: Adrian Caruana (adrian@adriancaruana.com)
 import argparse
-from arxiv2bib import arxiv2bib
-import bibtexparser
 import dataclasses
 import hashlib
 import json
 import logging
 import os
-import pandas as pd
 from pathlib import Path
 import re
 import requests
-from tqdm import tqdm
 from typing import Iterable, List, Tuple
+
+from arxiv2bib import arxiv2bib
+import bibtexparser
+import pandas as pd
+import pyperclip
+from tqdm import tqdm
 
 from ._constants import (
     REFMAN_DIR,
@@ -269,9 +271,11 @@ class RefMan:
 
     def add_using_arxiv(self, arxiv: str):
         if arxiv is not None and arxiv not in list(self.db.get("eprint", list())):
-            self.append_to_db(Paper.new_paper_from_arxiv(arxiv))
+            paper = Paper.new_paper_from_arxiv(arxiv)
+            self.append_to_db(paper)
 
         self._update_db()
+        return paper.meta.get("ID", "")
 
     def add_using_doi(self, doi: str, pdf: str):
         if (
@@ -281,9 +285,11 @@ class RefMan:
                     self.db.get("doi", list())
                 )
         ):
-            self.append_to_db(Paper.new_paper_from_doi(doi, pdf))
+            paper = Paper.new_paper_from_doi(doi, pdf)
+            self.append_to_db(paper)
 
         self._update_db()
+        return paper.meta.get("ID", "")
 
     def add_using_bibtex(
             self,
@@ -298,6 +304,7 @@ class RefMan:
         )
         self.append_to_db(paper)
         self._update_db()
+        return paper.meta.get("ID", "")
 
     def _update_db(self):
         # Write out bibliography file
@@ -373,17 +380,20 @@ def main():
     REFMAN_DIR.mkdir(exist_ok=True, parents=True)
 
     refman = RefMan()
+    new_citations = []
     if bool(args.arxiv):
         for job_kwargs in progress_with_status([{'arxiv': args.arxiv}]):
-            refman.add_using_arxiv(**job_kwargs)
+            new_citations.append(refman.add_using_arxiv(**job_kwargs))
     if bool(args.doi):
         for job_kwargs in progress_with_status([{'doi': args.doi, 'pdf': args.pdf}]):
-            refman.add_using_doi(**job_kwargs)
+            new_citations.append(refman.add_using_doi(**job_kwargs))
     if bool(args.bibtex):
         for job_kwargs in progress_with_status(
                 [{'bibtex_str': args.bibtex, 'pdf_path': args.pdf, 'key': args.key}]
         ):
-            refman.add_using_bibtex(**job_kwargs)
+            new_citations.append(refman.add_using_bibtex(**job_kwargs))
+
+    pyperclip.copy(f"\cite{','.join(new_citations)}")
 
 
 if __name__ == "__main__":

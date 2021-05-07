@@ -31,8 +31,10 @@ setup(
         "bs4",
         "numpy",
         "pandas",
+        "pyperclip",
         "retrying",
         "tqdm",
+        "typer",
     ],
     entry_points={
         "console_scripts": [
