@@ -28,28 +28,29 @@ def is_valid_url(url: str):
 def is_valid_doi(doi: str):
     return bool(re.match(doi_regex, doi))
 
+
 def fix_arxiv2bib_fmt(ref: Reference):
     """I don't like the bibtex format from either the arxiv API, or from
     arxiv2bib, so this function uses the data from arxiv2bib to properly
     format the bibtex reference the way I like it."""
     # My preferred format for ID is: 'FirstSurname_Year'
     id_fmt = f"{ref.authors[0].split(' ')[1]}_{ref.year}"
-    url = ref.url[:ref.url.rfind('v')] if ref.id != ref.bare_id else ref.url
-    
+    url = ref.url[: ref.url.rfind("v")] if ref.id != ref.bare_id else ref.url
+
     lines = ["@article{" + id_fmt]
     for k, v in [
-            ("Author", " and ".join(ref.authors)),
-            ("Title", ref.title),
-            ("Eprint", ref.bare_id),  # The trailing 'vX' is just an annoyance
-            ("DOI", ref.doi),
-            ("ArchivePrefix", "arXiv"),
-            ("PrimaryClass", ref.category),
-            ("Abstract", ref.summary),
-            ("Year", ref.year),
-            ("Month", ref.month),
-            ("Note", ref.note),
-            ("Url", url),
-            ("File", id_fmt + ".pdf"),
+        ("Author", " and ".join(ref.authors)),
+        ("Title", ref.title),
+        ("Eprint", ref.bare_id),  # The trailing 'vX' is just an annoyance
+        ("DOI", ref.doi),
+        ("ArchivePrefix", "arXiv"),
+        ("PrimaryClass", ref.category),
+        ("Abstract", ref.summary),
+        ("Year", ref.year),
+        ("Month", ref.month),
+        ("Note", ref.note),
+        ("Url", url),
+        ("File", id_fmt + ".pdf"),
     ]:
         if len(v):
             lines.append("%-13s = {%s}" % (k, v))

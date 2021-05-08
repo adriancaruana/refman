@@ -1,19 +1,23 @@
 # RefMan - A Simple python-based reference manager.
 # Author: Adrian Caruana (adrian@adriancaruana.com)
 import argparse
-from arxiv2bib import arxiv2bib
-import bibtexparser
 import dataclasses
 import hashlib
 import json
 import logging
 import os
-import pandas as pd
 from pathlib import Path
 import re
 import requests
-from tqdm import tqdm
+import shutil
 from typing import Iterable, List, Tuple
+
+from arxiv2bib import arxiv2bib
+import bibtexparser
+import pandas as pd
+import pyperclip
+from tqdm import tqdm
+import typer
 
 from ._constants import (
     REFMAN_DIR,
@@ -32,14 +36,18 @@ from ._scihub import SciHub
 
 STATUS_HANDLER = None
 LOGGER = logging.getLogger(f"refman.{__name__}")
-LOGGER.setLevel(logging.INFO)
+LOGGER.setLevel(logging.DEBUG)
 SH = SciHub()
 
 
-def update_status(msg: str, level_attr: str = 'info'):
+APP = typer.Typer(help="RefMan - A Simple python-based reference manager.")
+
+
+def update_status(msg: str, level_attr: str = "info"):
     global STATUS_HANDLER
     if not isinstance(STATUS_HANDLER, tqdm):
-        LOGGER.__getattr__(level_attr).__call__(msg)
+        # LOGGER.__getattr__(level_attr)
+        LOGGER.info(msg)
         return
     STATUS_HANDLER.set_postfix_str(msg)
 
@@ -49,6 +57,11 @@ def progress_with_status(it: Iterable):
     ncols = str(min(len(it), 20))
     barfmt = "{l_bar}{bar:" + ncols + "}{r_bar}{bar:-" + ncols + "b}"
     return (STATUS_HANDLER := tqdm(it, bar_format=barfmt))
+
+
+def reset_progress_status_handler():
+    global STATUS_HANDLER
+    STATUS_HANDLER = None
 
 
 @dataclasses.dataclass
@@ -87,6 +100,14 @@ class Paper:
         return meta.get("ID")
 
     @classmethod
+    def _update_bibtex_str_key(cls, bibtex_str: str, key: str):
+        bib = bibtexparser.loads(bibtex_str)
+        if not bib.entries[0].get("DOI", False):
+            bib.entries[0]["DOI"] = ""
+        bib.entries[0]["ID"] = key
+        return bibtexparser.dumps(bib)
+
+    @classmethod
     def parse_from_disk(cls, paper_path: Path, read_pdf: bool = False):
         """Returns a `Paper` object from disk."""
         update_status(f"{paper_path}: Loading reference from disk.")
@@ -106,10 +127,13 @@ class Paper:
         return cls(meta=meta, bibtex=bibtex, pdf_data=pdf_data)
 
     @classmethod
-    def new_paper_from_arxiv(cls, arxiv: str):
+    def new_paper_from_arxiv(cls, arxiv: str, key: str = None):
         """Adds a new paper to the `papers` dir from an arxiv str"""
         update_status(f"{arxiv=}: Retrieving bibtex entry.")
         bib_str = fix_arxiv2bib_fmt(arxiv2bib([arxiv])[0])
+        # Set custom key if requested
+        if key is not None:
+            bib_str = cls._update_bibtex_str_key(bib_str, key)
         meta = dict(bibtexparser.loads(bib_str).entries[0])
         update_status(f"{arxiv=}: Retrieving PDF.")
         pdf_data = requests.get(ARXIV_PDF_URL.format(arxiv=arxiv)).content
@@ -118,7 +142,7 @@ class Paper:
         return paper
 
     @classmethod
-    def new_paper_from_doi(cls, doi: str, pdf: str = None):
+    def new_paper_from_doi(cls, doi: str, key: str = None, pdf: str = None):
         """Adds a new paper to the `papers` dir from a DOI"""
         # Fetch the reference data from cross-ref
         if not is_valid_doi(doi):
@@ -141,6 +165,10 @@ class Paper:
             pdf_data = cls._get_pdf_data_from_path(pdf_path=pdf)
         if pdf_data is None:
             pdf_data = cls._get_pdf_data_from_doi(doi, citeproc_json)
+        # Set custom key if requested
+        if key is not None:
+            bib_str = cls._update_bibtex_str_key(bib_str, key)
+        # Prepare the Paper object
         meta = dict(bibtexparser.loads(bib_str).entries[0])
         paper = cls(meta=meta, bibtex=bib_str, pdf_data=pdf_data)
         paper.to_disk()
@@ -156,12 +184,10 @@ class Paper:
         """Adds a new paper to the `papers` dir from a bibtex_str.
         Optionally: Associate a pdf with the paper via local path or url
         """
-        bib = bibtexparser.loads(bibtex_str)
-        if not bib.entries[0].get("DOI", False):
-            bib.entries[0]["DOI"] = ""
+        # Set custom key if requested
         if key is not None:
-            bib.entries[0]["ID"] = key
-            bibtex_str = bibtexparser.dumps(bib)
+            bibtex_str = cls._update_bibtex_str_key(bibtex_str, key)
+        bib = bibtexparser.loads(bibtex_str)
         meta = dict(bib.entries[0])
         bibtex_key = cls._bibtex_key_from_bibtex_str(meta)
         LOGGER.info(f"{bibtex_key}: Parsing BibTeX string.")
@@ -188,7 +214,7 @@ class Paper:
                 with open(pdf_path, "r") as f:
                     LOGGER.info(f"{bibtex_key}: Got PDF from DISK.")
                     pdf_data = f.read()
-        
+
         return pdf_data
 
     @classmethod
@@ -244,11 +270,17 @@ class RefMan:
     db: pd.DataFrame = dataclasses.field(init=False, default=None)
 
     def __post_init__(self):
+        if not os.getenv("REFMAN_DATA", False):
+            LOGGER.warning(
+                f"`REFMAN_DATA` not found in environment variables. Using '{REFMAN_DIR}' as data path."
+            )
+        REFMAN_DIR.mkdir(exist_ok=True, parents=True)
         LOGGER.info("Parsing database.")
         paper_paths = self._paper_paths_list()
         if len(paper_paths) > 0:
             path_it = progress_with_status(paper_paths)
             papers = list(map(Paper.parse_from_disk, path_it))
+            reset_progress_status_handler()
             self.db = pd.DataFrame(map(self._get_paper_meta, papers))
         else:
             self.db = pd.DataFrame(None)
@@ -267,36 +299,72 @@ class RefMan:
     def append_to_db(self, paper: Paper):
         self.db = self.db.append(self._get_paper_meta(paper), ignore_index=True)
 
-    def add_using_arxiv(self, arxiv: str):
+    def remove_from_db(self, column: str, value: str):
+        self.db = self.db[self.db[column] != value]
+
+    def add_using_arxiv(self, arxiv: str, key: str = None):
         if arxiv is not None and arxiv not in list(self.db.get("eprint", list())):
-            self.append_to_db(Paper.new_paper_from_arxiv(arxiv))
+            paper = Paper.new_paper_from_arxiv(arxiv, key)
+            self.append_to_db(paper)
 
         self._update_db()
+        return paper.meta.get("ID", "")
 
     def add_using_doi(self, doi: str, pdf: str):
-        if (
-                doi is not None and
-                doi.lower() not in map(
-                    lambda x: x.lower(),
-                    self.db.get("doi", list())
-                )
+        if doi is not None and doi.lower() not in map(
+            lambda x: x.lower(), self.db.get("doi", list())
         ):
-            self.append_to_db(Paper.new_paper_from_doi(doi, pdf))
+            paper = Paper.new_paper_from_doi(doi, pdf)
+            self.append_to_db(paper)
 
         self._update_db()
+        return paper.meta.get("ID", "")
 
-    def add_using_bibtex(
-            self,
-            bibtex_str: str,
-            pdf_path: str,
-            key: str = None
-    ):
+    def add_using_bibtex(self, bibtex_str: str, pdf_path: str, key: str = None):
         paper = Paper.new_paper_from_bibtex(
-            bibtex_str=bibtex_str,
-            pdf_path=pdf_path,
-            key=key
+            bibtex_str=bibtex_str, pdf_path=pdf_path, key=key
         )
         self.append_to_db(paper)
+        self._update_db()
+        return paper.meta.get("ID", "")
+
+    def rekey(self, key: str, new_key: str):
+        paper_path_li = list(REFMAN_DIR.glob(key + "*"))
+        if len(paper_path_li) > 1:
+            raise ValueError(
+                f"Multiple papers matching wildcard: {key + '*'}.\n{paper_path_li=}."
+            )
+        if len(paper_path_li) == 0:
+            raise FileNotFoundError(
+                f"No papers matching wildcard: {key + '*'}. Exiting."
+            )
+        paper_path = paper_path_li[0]
+        old_paper = Paper.parse_from_disk(paper_path)
+        new_paper = Paper.new_paper_from_bibtex(
+            bibtex_str=old_paper.bibtex, pdf_path=old_paper.pdf_path, key=new_key
+        )
+        # Remove the old paper
+        self.remove_paper(key)
+        return new_paper.meta.get("ID", "")
+
+    def remove_paper(self, key: str):
+        paper_path = REFMAN_DIR / key
+        if not paper_path.exists():
+            LOGGER.info(f"Couldn't find any paper at: {paper_path}. Trying wildcard...")
+            paper_path_li = list(REFMAN_DIR.glob(key + "*"))
+            if len(paper_path_li) > 1:
+                raise ValueError(
+                    f"Multiple papers matching wildcard: {key + '*'}.\n{paper_path_li=}."
+                )
+            if len(paper_path_li) == 0:
+                raise FileNotFoundError(
+                    f"No papers matching wildcard: {key + '*'}. Exiting."
+                )
+            paper_path = paper_path_li[0]
+
+        LOGGER.info(f"Found paper: {paper_path}: Removing it and updating database.")
+        shutil.rmtree(paper_path)
+        self.remove_from_db(column="bibtex_path", value=str(paper_path / BIBTEX_NAME))
         self._update_db()
 
     def _update_db(self):
@@ -307,84 +375,48 @@ class RefMan:
                 f.write(open(paper_bibtex, "r").read() + "\n")
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="RefMan - A Simple python-based reference manager."
-    )
-    parser.add_argument(
-        "-d",
-        "--doi",
-        help=(
-            "Tries to find and download the paper using the DOI. "
-        ),
-        type=str,
-        required=False,
-        default=None,
-    )
-    parser.add_argument(
-        "-a",
-        "--arxiv",
-        help=(
-            "Gets the paper from an Arxiv reference string. "
-        ),
-        type=str,
-        required=False,
-        default=None,
-    )
-    parser.add_argument(
-        "-b",
-        "--bibtex",
-        help=(
-            "Adds an entry to the database from a bibtex-string. "
-            "Optionally, provide -p, --pdf to associate this entry with a PDF."
-        ),
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
-        "-p",
-        "--pdf",
-        help=(
-            "Adds an entry to the database from a bibtex-string. "
-            "Optionally, provide -p, --pdf to associate this entry with a PDF."
-        ),
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
-        "-k",
-        "--key",
-        help=(
-            "Explicitly define the key to use (without hash) for the paper."
-        ),
-        type=str,
-        default=None,
-    )
-    args = parser.parse_args()
-    if bool(args.arxiv) and bool(args.pdf):
-        raise ValueError(
-            f"`-p, --pdf` cannot be used with `-a, --arxiv`."
-        )
-
-    if not os.getenv("REFMAN_DATA", False):
-        LOGGER.warning(
-            f"`REFMAN_DATA` not found in environment variables. Using '{REFMAN_DIR}' as data path."
-        )
-    REFMAN_DIR.mkdir(exist_ok=True, parents=True)
-
+@APP.command()
+def doi(doi: str, key: str = None, pdf: str = None):
+    """Gets the paper from an Arxiv reference string"""
+    typer.echo(f"Adding new paper from {doi=}")
     refman = RefMan()
-    if bool(args.arxiv):
-        for job_kwargs in progress_with_status([{'arxiv': args.arxiv}]):
-            refman.add_using_arxiv(**job_kwargs)
-    if bool(args.doi):
-        for job_kwargs in progress_with_status([{'doi': args.doi, 'pdf': args.pdf}]):
-            refman.add_using_doi(**job_kwargs)
-    if bool(args.bibtex):
-        for job_kwargs in progress_with_status(
-                [{'bibtex_str': args.bibtex, 'pdf_path': args.pdf, 'key': args.key}]
-        ):
-            refman.add_using_bibtex(**job_kwargs)
+    new_citation = refman.add_using_doi(doi=doi, key=key, pdf=pdf)
+    pyperclip.copy(f"\cite{{{new_citation}}}")
+
+
+@APP.command()
+def arxiv(arxiv: str, key: str = None):
+    """Tries to find and download the paper using the DOI."""
+    typer.echo(f"Adding new paper from {arxiv=}")
+    refman = RefMan()
+    new_citation = refman.add_using_arxiv(arxiv=arxiv, key=key)
+    pyperclip.copy(f"\cite{{{new_citation}}}")
+
+
+@APP.command()
+def bibtex(bibtex: str, key: str = None, pdf: str = None):
+    """Adds an entry to the database from a bibtex-string."""
+    typer.echo(f"Adding new paper from bibtex.")
+    refman = RefMan()
+    new_citation = refman.add_using_bibtex(bibtex_str=bibtex, key=key, pdf_path=pdf)
+    pyperclip.copy(f"\cite{{{new_citation}}}")
+
+
+@APP.command()
+def rekey(key: str, new_key: str):
+    """Modify the key of a paper."""
+    refman = RefMan()
+    new_citation = refman.rekey(key=key, new_key=new_key)
+    pyperclip.copy(f"\cite{{{new_citation}}}")
+
+
+@APP.command()
+def rm(key: str):
+    """Removes a paper from the disk and database."""
+    typer.echo(f"Attempting to remove paper with key:")
+    refman = RefMan()
+    new_citation = refman.remove_paper(key=key)
 
 
 if __name__ == "__main__":
-    main()
+    APP()
