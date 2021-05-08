@@ -39,13 +39,13 @@ mkdir ~/refman_data
 export REFMAN_DATA=$HOME/refman_data
 
 # Add a paper using a DOI:
-refman -d 10.1103/PHYSREVLETT.116.061102
+refman doi 10.1103/PHYSREVLETT.116.061102
 
 # Add a paper using an `arxiv` reference
-refman -a 2103.16574
+refman arxiv 2103.16574
 
 # Add a paper using a bibtex string & pdf.
-refman -b "@inproceedings{devlin2018bert,
+refman bibtex "@inproceedings{devlin2018bert,
 	title="BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
 	author="Jacob {Devlin} and Ming-Wei {Chang} and Kenton {Lee} and Kristina N. {Toutanova}",
 	booktitle="Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers)",
@@ -57,19 +57,24 @@ refman -b "@inproceedings{devlin2018bert,
 ## Usage
 
 ```
-usage: refman [-h] [-d DOI] [-a ARXIV] [-b BIBTEX] [-p PDF] [-k KEY]
+~ >>> refman --help
+Usage: refman [OPTIONS] COMMAND [ARGS]...
 
-RefMan - A Simple python-based reference manager.
+  RefMan - A Simple python-based reference manager.
 
-optional arguments:
-  -h, --help            show this help message and exit
-  -d DOI, --doi DOI     Tries to find and download the paper using the DOI.
-  -a ARXIV, --arxiv ARXIV
-                        Gets the paper from an Arxiv reference string.
-  -b BIBTEX, --bibtex BIBTEX
-                        Adds an entry to the database from a bibtex-string. Optionally, provide -p,
-                        --pdf to associate this entry with a PDF.
-  -p PDF, --pdf PDF     Adds an entry to the database from a bibtex-string. Optionally, provide -p,
-                        --pdf to associate this entry with a PDF.
-  -k KEY, --key KEY     Explicitly define the key to use (without hash) for the paper.
+Options:
+  --install-completion [bash|zsh|fish|powershell|pwsh]
+                                  Install completion for the specified shell.
+  --show-completion [bash|zsh|fish|powershell|pwsh]
+                                  Show completion for the specified shell, to
+                                  copy it or customize the installation.
+
+  --help                          Show this message and exit.
+
+Commands:
+  arxiv   Tries to find and download the paper using the DOI.
+  bibtex  Adds an entry to the database from a bibtex-string.
+  doi     Gets the paper from an Arxiv reference string
+  rekey   Modify the key of a paper.
+  rm      Removes a paper from the disk and database.
 ```

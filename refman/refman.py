@@ -41,6 +41,7 @@ SH = SciHub()
 
 
 APP = typer.Typer(help="RefMan - A Simple python-based reference manager.")
+REFMAN = RefMan()
 
 
 def update_status(msg: str, level_attr: str = "info"):
@@ -379,8 +380,7 @@ class RefMan:
 def doi(doi: str, key: str = None, pdf: str = None):
     """Gets the paper from an Arxiv reference string"""
     typer.echo(f"Adding new paper from {doi=}")
-    refman = RefMan()
-    new_citation = refman.add_using_doi(doi=doi, key=key, pdf=pdf)
+    new_citation = REFMAN.add_using_doi(doi=doi, key=key, pdf=pdf)
     pyperclip.copy(f"\cite{{{new_citation}}}")
 
 
@@ -388,8 +388,7 @@ def doi(doi: str, key: str = None, pdf: str = None):
 def arxiv(arxiv: str, key: str = None):
     """Tries to find and download the paper using the DOI."""
     typer.echo(f"Adding new paper from {arxiv=}")
-    refman = RefMan()
-    new_citation = refman.add_using_arxiv(arxiv=arxiv, key=key)
+    new_citation = REFMAN.add_using_arxiv(arxiv=arxiv, key=key)
     pyperclip.copy(f"\cite{{{new_citation}}}")
 
 
@@ -397,16 +396,14 @@ def arxiv(arxiv: str, key: str = None):
 def bibtex(bibtex: str, key: str = None, pdf: str = None):
     """Adds an entry to the database from a bibtex-string."""
     typer.echo(f"Adding new paper from bibtex.")
-    refman = RefMan()
-    new_citation = refman.add_using_bibtex(bibtex_str=bibtex, key=key, pdf_path=pdf)
+    new_citation = REFMAN.add_using_bibtex(bibtex_str=bibtex, key=key, pdf_path=pdf)
     pyperclip.copy(f"\cite{{{new_citation}}}")
 
 
 @APP.command()
 def rekey(key: str, new_key: str):
     """Modify the key of a paper."""
-    refman = RefMan()
-    new_citation = refman.rekey(key=key, new_key=new_key)
+    new_citation = REFMAN.rekey(key=key, new_key=new_key)
     pyperclip.copy(f"\cite{{{new_citation}}}")
 
 
@@ -414,8 +411,7 @@ def rekey(key: str, new_key: str):
 def rm(key: str):
     """Removes a paper from the disk and database."""
     typer.echo(f"Attempting to remove paper with key:")
-    refman = RefMan()
-    new_citation = refman.remove_paper(key=key)
+    new_citation = REFMAN.remove_paper(key=key)
 
 
 if __name__ == "__main__":
