@@ -43,7 +43,7 @@ SH = SciHub()
 APP = typer.Typer(help="RefMan - A Simple python-based reference manager.")
 
 
-def update_status(msg: str, level_attr: str = 'info'):
+def update_status(msg: str, level_attr: str = "info"):
     global STATUS_HANDLER
     if not isinstance(STATUS_HANDLER, tqdm):
         # LOGGER.__getattr__(level_attr)
@@ -57,6 +57,7 @@ def progress_with_status(it: Iterable):
     ncols = str(min(len(it), 20))
     barfmt = "{l_bar}{bar:" + ncols + "}{r_bar}{bar:-" + ncols + "b}"
     return (STATUS_HANDLER := tqdm(it, bar_format=barfmt))
+
 
 def reset_progress_status_handler():
     global STATUS_HANDLER
@@ -213,7 +214,7 @@ class Paper:
                 with open(pdf_path, "r") as f:
                     LOGGER.info(f"{bibtex_key}: Got PDF from DISK.")
                     pdf_data = f.read()
-        
+
         return pdf_data
 
     @classmethod
@@ -300,7 +301,7 @@ class RefMan:
 
     def remove_from_db(self, column: str, value: str):
         self.db = self.db[self.db[column] != value]
-        
+
     def add_using_arxiv(self, arxiv: str, key: str = None):
         if arxiv is not None and arxiv not in list(self.db.get("eprint", list())):
             paper = Paper.new_paper_from_arxiv(arxiv, key)
@@ -310,12 +311,8 @@ class RefMan:
         return paper.meta.get("ID", "")
 
     def add_using_doi(self, doi: str, pdf: str):
-        if (
-                doi is not None and
-                doi.lower() not in map(
-                    lambda x: x.lower(),
-                    self.db.get("doi", list())
-                )
+        if doi is not None and doi.lower() not in map(
+            lambda x: x.lower(), self.db.get("doi", list())
         ):
             paper = Paper.new_paper_from_doi(doi, pdf)
             self.append_to_db(paper)
@@ -323,16 +320,9 @@ class RefMan:
         self._update_db()
         return paper.meta.get("ID", "")
 
-    def add_using_bibtex(
-            self,
-            bibtex_str: str,
-            pdf_path: str,
-            key: str = None
-    ):
+    def add_using_bibtex(self, bibtex_str: str, pdf_path: str, key: str = None):
         paper = Paper.new_paper_from_bibtex(
-            bibtex_str=bibtex_str,
-            pdf_path=pdf_path,
-            key=key
+            bibtex_str=bibtex_str, pdf_path=pdf_path, key=key
         )
         self.append_to_db(paper)
         self._update_db()
@@ -341,15 +331,17 @@ class RefMan:
     def rekey(self, key: str, new_key: str):
         paper_path_li = list(REFMAN_DIR.glob(key + "*"))
         if len(paper_path_li) > 1:
-            raise ValueError(f"Multiple papers matching wildcard: {key + '*'}.\n{paper_path_li=}.")
+            raise ValueError(
+                f"Multiple papers matching wildcard: {key + '*'}.\n{paper_path_li=}."
+            )
         if len(paper_path_li) == 0:
-            raise FileNotFoundError(f"No papers matching wildcard: {key + '*'}. Exiting.")
+            raise FileNotFoundError(
+                f"No papers matching wildcard: {key + '*'}. Exiting."
+            )
         paper_path = paper_path_li[0]
         old_paper = Paper.parse_from_disk(paper_path)
         new_paper = Paper.new_paper_from_bibtex(
-            bibtex_str=old_paper.bibtex,
-            pdf_path=old_paper.pdf_path,
-            key=new_key
+            bibtex_str=old_paper.bibtex, pdf_path=old_paper.pdf_path, key=new_key
         )
         # Remove the old paper
         self.remove_paper(key)
@@ -361,11 +353,15 @@ class RefMan:
             LOGGER.info(f"Couldn't find any paper at: {paper_path}. Trying wildcard...")
             paper_path_li = list(REFMAN_DIR.glob(key + "*"))
             if len(paper_path_li) > 1:
-                raise ValueError(f"Multiple papers matching wildcard: {key + '*'}.\n{paper_path_li=}.")
+                raise ValueError(
+                    f"Multiple papers matching wildcard: {key + '*'}.\n{paper_path_li=}."
+                )
             if len(paper_path_li) == 0:
-                raise FileNotFoundError(f"No papers matching wildcard: {key + '*'}. Exiting.")
+                raise FileNotFoundError(
+                    f"No papers matching wildcard: {key + '*'}. Exiting."
+                )
             paper_path = paper_path_li[0]
-                
+
         LOGGER.info(f"Found paper: {paper_path}: Removing it and updating database.")
         shutil.rmtree(paper_path)
         self.remove_from_db(column="bibtex_path", value=str(paper_path / BIBTEX_NAME))
