@@ -1,6 +1,11 @@
 # RefMan
 RefMan - A Simple python-based reference manager
 
+## Demo
+
+![RefMan Demo](demo.gif?raw=true)
+
+
 ## How `RefMan` works
 `RefMan` capitalises on [Sci-hub](https://sci-hub.se/) and [crossref](https://crossref.org) to 
 provide a very simple Python-based reference manager.
