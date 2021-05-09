@@ -1,6 +1,8 @@
 import hashlib
 import os
 import re
+import requests
+
 from arxiv2bib import Reference
 
 
@@ -56,3 +58,10 @@ def fix_arxiv2bib_fmt(ref: Reference):
             lines.append("%-13s = {%s}" % (k, v))
 
     return ("," + os.linesep).join(lines) + os.linesep + "}"
+
+
+def ua_requester_get(*args, **kwargs):
+    ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36"
+    if "headers" not in kwargs:
+        kwargs["headers"] = {"User-Agent": ua}
+    return requests.get(*args, **kwargs)

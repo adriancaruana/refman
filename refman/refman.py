@@ -8,7 +8,6 @@ import logging
 import os
 from pathlib import Path
 import re
-import requests
 import shutil
 from typing import Iterable, List, Tuple
 
@@ -31,7 +30,13 @@ from ._constants import (
     FMT_BIBTEX,
     FMT_CITEPROC,
 )
-from ._utils import md5_hexdigest, is_valid_url, is_valid_doi, fix_arxiv2bib_fmt
+from ._utils import (
+    md5_hexdigest,
+    is_valid_url,
+    is_valid_doi,
+    fix_arxiv2bib_fmt,
+    ua_requester_get,
+)
 from ._scihub import SciHub
 
 STATUS_HANDLER = None
@@ -41,7 +46,6 @@ SH = SciHub()
 
 
 APP = typer.Typer(help="RefMan - A Simple python-based reference manager.")
-REFMAN = RefMan()
 
 
 def update_status(msg: str, level_attr: str = "info"):
@@ -137,7 +141,7 @@ class Paper:
             bib_str = cls._update_bibtex_str_key(bib_str, key)
         meta = dict(bibtexparser.loads(bib_str).entries[0])
         update_status(f"{arxiv=}: Retrieving PDF.")
-        pdf_data = requests.get(ARXIV_PDF_URL.format(arxiv=arxiv)).content
+        pdf_data = ua_requester_get(ARXIV_PDF_URL.format(arxiv=arxiv)).content
         paper = cls(meta=meta, bibtex=bib_str, pdf_data=pdf_data)
         paper.to_disk()
         return paper
@@ -149,7 +153,7 @@ class Paper:
         if not is_valid_doi(doi):
             raise ValueError(f"Provided {doi=} is not a valid DOI.")
         update_status(f"{doi=}: Retrieving structured reference info.")
-        r = requests.get((url := CROSSREF_URL.format(doi=doi, fmt=FMT_CITEPROC)))
+        r = ua_requester_get((url := CROSSREF_URL.format(doi=doi, fmt=FMT_CITEPROC)))
         if not r.ok:
             raise ValueError(
                 "Could not get citeproc+json from crossref.\n"
@@ -157,7 +161,7 @@ class Paper:
             )
         citeproc_json = dict(r.json())
         update_status(f"{doi=}: Retrieving bibtex entry.")
-        bib_str = requests.get(
+        bib_str = ua_requester_get(
             CROSSREF_URL.format(doi=doi, fmt=FMT_BIBTEX)
         ).content.decode("utf-8")
         update_status(f"{doi=}: Retrieving PDF.")
@@ -193,7 +197,7 @@ class Paper:
         bibtex_key = cls._bibtex_key_from_bibtex_str(meta)
         LOGGER.info(f"{bibtex_key}: Parsing BibTeX string.")
         pdf_data = None
-        if pdf_data is not None:
+        if pdf_path is not None:
             pdf_data = cls._get_pdf_data_from_path(pdf_path)
         paper = Paper(meta=meta, bibtex=bibtex_str, pdf_data=pdf_data)
         paper.to_disk()
@@ -201,19 +205,20 @@ class Paper:
 
     @classmethod
     def _get_pdf_data_from_path(cls, pdf_path: str) -> bytes:
+        LOGGER.info(f"Getting PDF from path.")
         pdf_data = None
         if is_valid_url(pdf_path):
-            r = requests.get(pdf_path)
+            r = ua_requester_get(pdf_path)
             if "application/pdf" not in r.headers["Content-Type"]:
-                LOGGER.warning(f"{bibtex_key}: {pdf_path} did not contain a PDF.")
+                LOGGER.warning(f"{pdf_path} did not contain a PDF.")
                 pdf_data = None
             else:
-                LOGGER.info(f"{bibtex_key}: Got PDF from URL.")
+                LOGGER.info(f"Got PDF from URL.")
                 pdf_data = r.content
         else:
             if pdf_path is not None and Path(pdf_path).exists():
                 with open(pdf_path, "r") as f:
-                    LOGGER.info(f"{bibtex_key}: Got PDF from DISK.")
+                    LOGGER.info(f"Got PDF from DISK.")
                     pdf_data = f.read()
 
         return pdf_data
@@ -229,7 +234,7 @@ class Paper:
                     for l in citeproc_json["link"]
                     if l["content-type"] == "application/pdf"
                 )
-                r = requests.get(link)
+                r = ua_requester_get(link)
                 if "application/pdf" not in r.headers["Content-Type"]:
                     raise TypeError(f"Link did not contain a PDF.")
                 update_status(f"{doi=}: Got PDF from CITEPROC.")
@@ -311,11 +316,11 @@ class RefMan:
         self._update_db()
         return paper.meta.get("ID", "")
 
-    def add_using_doi(self, doi: str, pdf: str):
+    def add_using_doi(self, doi: str, key: str, pdf: str):
         if doi is not None and doi.lower() not in map(
             lambda x: x.lower(), self.db.get("doi", list())
         ):
-            paper = Paper.new_paper_from_doi(doi, pdf)
+            paper = Paper.new_paper_from_doi(doi, key, pdf)
             self.append_to_db(paper)
 
         self._update_db()
@@ -377,33 +382,41 @@ class RefMan:
 
 
 @APP.command()
-def doi(doi: str, key: str = None, pdf: str = None):
-    """Gets the paper from an Arxiv reference string"""
-    typer.echo(f"Adding new paper from {doi=}")
-    new_citation = REFMAN.add_using_doi(doi=doi, key=key, pdf=pdf)
-    pyperclip.copy(f"\cite{{{new_citation}}}")
-
-
-@APP.command()
-def arxiv(arxiv: str, key: str = None):
+def doi(
+    doi: str,
+    key: str = typer.Option(None, "--key", "-k"),
+    pdf: str = typer.Option(None, "--pdf", "-p"),
+):
     """Tries to find and download the paper using the DOI."""
-    typer.echo(f"Adding new paper from {arxiv=}")
-    new_citation = REFMAN.add_using_arxiv(arxiv=arxiv, key=key)
+    typer.echo(f"Adding new paper from {doi=}")
+    new_citation = RefMan().add_using_doi(doi=doi, key=key, pdf=pdf)
     pyperclip.copy(f"\cite{{{new_citation}}}")
 
 
 @APP.command()
-def bibtex(bibtex: str, key: str = None, pdf: str = None):
+def arxiv(arxiv: str, key: str = typer.Option(None, "--key", "-k")):
+    """Gets the paper from an Arxiv reference string"""
+    typer.echo(f"Adding new paper from {arxiv=}")
+    new_citation = RefMan().add_using_arxiv(arxiv=arxiv, key=key)
+    pyperclip.copy(f"\cite{{{new_citation}}}")
+
+
+@APP.command()
+def bibtex(
+    bibtex: str,
+    key: str = typer.Option(None, "--key", "-k"),
+    pdf: str = typer.Option(None, "--pdf", "-p"),
+):
     """Adds an entry to the database from a bibtex-string."""
     typer.echo(f"Adding new paper from bibtex.")
-    new_citation = REFMAN.add_using_bibtex(bibtex_str=bibtex, key=key, pdf_path=pdf)
+    new_citation = RefMan().add_using_bibtex(bibtex_str=bibtex, key=key, pdf_path=pdf)
     pyperclip.copy(f"\cite{{{new_citation}}}")
 
 
 @APP.command()
 def rekey(key: str, new_key: str):
     """Modify the key of a paper."""
-    new_citation = REFMAN.rekey(key=key, new_key=new_key)
+    new_citation = RefMan().rekey(key=key, new_key=new_key)
     pyperclip.copy(f"\cite{{{new_citation}}}")
 
 
@@ -411,7 +424,7 @@ def rekey(key: str, new_key: str):
 def rm(key: str):
     """Removes a paper from the disk and database."""
     typer.echo(f"Attempting to remove paper with key:")
-    new_citation = REFMAN.remove_paper(key=key)
+    new_citation = RefMan().remove_paper(key=key)
 
 
 if __name__ == "__main__":

@@ -72,9 +72,9 @@ Options:
   --help                          Show this message and exit.
 
 Commands:
-  arxiv   Tries to find and download the paper using the DOI.
+  arxiv   Gets the paper from an Arxiv reference string
   bibtex  Adds an entry to the database from a bibtex-string.
-  doi     Gets the paper from an Arxiv reference string
+  doi     Tries to find and download the paper using the DOI.
   rekey   Modify the key of a paper.
   rm      Removes a paper from the disk and database.
 ```
