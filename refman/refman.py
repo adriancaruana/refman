@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 from typing import Iterable, List, Tuple
 
 from arxiv2bib import arxiv2bib
@@ -76,9 +77,6 @@ class Paper:
     pdf_data: bytes = dataclasses.field(default=None)
     meta_name: str = dataclasses.field(init=False, default=META_NAME)
     bibtex_name: str = dataclasses.field(init=False, default=BIBTEX_NAME)
-
-    def __post_init__(self):
-        self.paper_path.mkdir(exist_ok=True, parents=True)
 
     @property
     def paper_path(self):
@@ -167,7 +165,7 @@ class Paper:
         update_status(f"{doi=}: Retrieving PDF.")
         pdf_data = None
         if pdf is not None:
-            pdf_data = cls._get_pdf_data_from_path(pdf_path=pdf)
+            pdf_data = cls._get_pdf_data_from_path(pdf_path=str(pdf))
         if pdf_data is None:
             pdf_data = cls._get_pdf_data_from_doi(doi, citeproc_json)
         # Set custom key if requested
@@ -198,7 +196,7 @@ class Paper:
         LOGGER.info(f"{bibtex_key}: Parsing BibTeX string.")
         pdf_data = None
         if pdf_path is not None:
-            pdf_data = cls._get_pdf_data_from_path(pdf_path)
+            pdf_data = cls._get_pdf_data_from_path(pdf_path=str(pdf_path))
         paper = Paper(meta=meta, bibtex=bibtex_str, pdf_data=pdf_data)
         paper.to_disk()
         return paper
@@ -217,7 +215,7 @@ class Paper:
                 pdf_data = r.content
         else:
             if pdf_path is not None and Path(pdf_path).exists():
-                with open(pdf_path, "r") as f:
+                with open(pdf_path, "rb") as f:
                     LOGGER.info(f"Got PDF from DISK.")
                     pdf_data = f.read()
 
@@ -262,6 +260,7 @@ class Paper:
         return bytes()
 
     def to_disk(self):
+        self.paper_path.mkdir(exist_ok=True, parents=True)
         with open(self.meta_path, "w") as f:
             json.dump(self.meta, f)
         with open(self.bibtex_path, "w") as f:
@@ -294,7 +293,7 @@ class RefMan:
     def _paper_paths_list(self):
         return list(map(lambda x: x.parent, REFMAN_DIR.rglob(META_NAME)))
 
-    def _get_paper_meta(self, paper) -> dict:
+    def _get_paper_meta(self, paper: Paper) -> dict:
         return {
             "doi": paper.meta.get("doi", ""),  # For parsing via DOI
             "eprint": paper.meta.get("eprint", ""),  # For parsing via arxiv
@@ -350,13 +349,55 @@ class RefMan:
             bibtex_str=old_paper.bibtex, pdf_path=old_paper.pdf_path, key=new_key
         )
         # Remove the old paper
-        self.remove_paper(key)
+        self.remove_paper(old_paper.paper_path.stem, allow_wildcard=True)
+        self.append_to_db(new_paper)
+        self._update_db()
         return new_paper.meta.get("ID", "")
 
-    def remove_paper(self, key: str):
+    def meta_edit(self, key: str):
+        paper_path_li = list(REFMAN_DIR.glob(key + "*"))
+        if len(paper_path_li) > 1:
+            raise ValueError(
+                f"Multiple papers matching wildcard: {key + '*'}.\n{paper_path_li=}."
+            )
+        if len(paper_path_li) == 0:
+            raise FileNotFoundError(
+                f"No papers matching wildcard: {key + '*'}. Exiting."
+            )
+        paper_path = paper_path_li[0]
+        old_paper = Paper.parse_from_disk(paper_path)
+        editor = os.getenv("EDITOR", "nano")
+        subprocess.call([editor, old_paper.bibtex_path])
+        with open(old_paper.bibtex_path, 'r') as f:
+            new_bibtex = f.read()
+        if new_bibtex == old_paper.bibtex:
+            LOGGER.warning(
+                "You didn't modify the bibtex! "
+                "Therefore, there is nothing to do, because the metadata hasn't changed."
+            )
+            return old_paper.meta.get("ID", "")
+        LOGGER.info(
+            "Found changes in {old_paper.bibtex_path}. Re-hashing and moving."
+        )
+        pdf_path = old_paper.pdf_path if old_paper.pdf_path.exists() else None
+        new_paper = Paper.new_paper_from_bibtex(
+            bibtex_str=new_bibtex, pdf_path=pdf_path
+        )
+        # Remove the old paper
+        self.remove_paper(old_paper.paper_path.stem)
+        self.append_to_db(new_paper)
+        self._update_db()
+        return new_paper.meta.get("ID", "")
+
+    def remove_paper(self, key: str, allow_wildcard: bool = False):
         paper_path = REFMAN_DIR / key
         if not paper_path.exists():
             LOGGER.info(f"Couldn't find any paper at: {paper_path}. Trying wildcard...")
+            paper_path_li = list(REFMAN_DIR.glob(key))
+            if len(paper_path_li) == 0 and not allow_wildcard:
+                raise ValueError(
+                    f"Found no papers matching {key=}, and {allow_wildcard=}. Exiting."
+                )
             paper_path_li = list(REFMAN_DIR.glob(key + "*"))
             if len(paper_path_li) > 1:
                 raise ValueError(
@@ -421,10 +462,17 @@ def rekey(key: str, new_key: str):
 
 
 @APP.command()
+def medit(key: str):
+    """Interactively modify the metadata of a paper."""
+    new_citation = RefMan().meta_edit(key=key)
+    pyperclip.copy(f"\cite{{{new_citation}}}")
+
+
+@APP.command()
 def rm(key: str):
     """Removes a paper from the disk and database."""
     typer.echo(f"Attempting to remove paper with key:")
-    new_citation = RefMan().remove_paper(key=key)
+    new_citation = RefMan().remove_paper(key=key, allow_wildcard=True)
 
 
 if __name__ == "__main__":
