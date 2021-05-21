@@ -36,6 +36,7 @@ from ._utils import (
     is_valid_url,
     is_valid_doi,
     fix_arxiv2bib_fmt,
+    fix_month,
     ua_requester_get,
 )
 from ._scihub import SciHub
@@ -44,6 +45,7 @@ STATUS_HANDLER = None
 LOGGER = logging.getLogger(f"refman.{__name__}")
 LOGGER.setLevel(logging.DEBUG)
 SH = SciHub()
+P = bibtexparser.bparser.BibTexParser(common_strings=True)
 
 
 APP = typer.Typer(help="RefMan - A Simple python-based reference manager.")
@@ -104,11 +106,15 @@ class Paper:
 
     @classmethod
     def _update_bibtex_str_key(cls, bibtex_str: str, key: str):
-        bib = bibtexparser.loads(bibtex_str)
+        bib = bibtexparser.loads(bibtex_str, P)
         if not bib.entries[0].get("DOI", False):
             bib.entries[0]["DOI"] = ""
         bib.entries[0]["ID"] = key
         return bibtexparser.dumps(bib)
+
+    @classmethod
+    def _fix_bibtex_format(cls, bib_str: str) -> str:
+        return fix_month(bib_str)
 
     @classmethod
     def parse_from_disk(cls, paper_path: Path, read_pdf: bool = False):
@@ -133,11 +139,11 @@ class Paper:
     def new_paper_from_arxiv(cls, arxiv: str, key: str = None):
         """Adds a new paper to the `papers` dir from an arxiv str"""
         update_status(f"{arxiv=}: Retrieving bibtex entry.")
-        bib_str = fix_arxiv2bib_fmt(arxiv2bib([arxiv])[0])
+        bib_str = cls._fix_bibtex_format(fix_arxiv2bib_fmt(arxiv2bib([arxiv])[0]))
         # Set custom key if requested
         if key is not None:
             bib_str = cls._update_bibtex_str_key(bib_str, key)
-        meta = dict(bibtexparser.loads(bib_str).entries[0])
+        meta = dict(bibtexparser.loads(bib_str, P).entries[0])
         update_status(f"{arxiv=}: Retrieving PDF.")
         pdf_data = ua_requester_get(ARXIV_PDF_URL.format(arxiv=arxiv)).content
         paper = cls(meta=meta, bibtex=bib_str, pdf_data=pdf_data)
@@ -159,9 +165,9 @@ class Paper:
             )
         citeproc_json = dict(r.json())
         update_status(f"{doi=}: Retrieving bibtex entry.")
-        bib_str = ua_requester_get(
+        bib_str = cls._fix_bibtex_format(ua_requester_get(
             CROSSREF_URL.format(doi=doi, fmt=FMT_BIBTEX)
-        ).content.decode("utf-8")
+        ).content.decode("utf-8"))
         update_status(f"{doi=}: Retrieving PDF.")
         pdf_data = None
         if pdf is not None:
@@ -172,7 +178,7 @@ class Paper:
         if key is not None:
             bib_str = cls._update_bibtex_str_key(bib_str, key)
         # Prepare the Paper object
-        meta = dict(bibtexparser.loads(bib_str).entries[0])
+        meta = dict(bibtexparser.loads(bib_str, P).entries[0])
         paper = cls(meta=meta, bibtex=bib_str, pdf_data=pdf_data)
         paper.to_disk()
         return paper
@@ -190,7 +196,8 @@ class Paper:
         # Set custom key if requested
         if key is not None:
             bibtex_str = cls._update_bibtex_str_key(bibtex_str, key)
-        bib = bibtexparser.loads(bibtex_str)
+        bibtex_str = cls._fix_bibtex_format(bibtex_str)
+        bib = bibtexparser.loads(bibtex_str, P)
         meta = dict(bib.entries[0])
         bibtex_key = cls._bibtex_key_from_bibtex_str(meta)
         LOGGER.info(f"{bibtex_key}: Parsing BibTeX string.")

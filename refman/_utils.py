@@ -45,6 +45,7 @@ def fix_arxiv2bib_fmt(ref: Reference):
         ("Title", ref.title),
         ("Eprint", ref.bare_id),  # The trailing 'vX' is just an annoyance
         ("DOI", ref.doi),
+        # ("Journal", (f"arXiv preprint {ref.category}")),
         ("ArchivePrefix", "arXiv"),
         ("PrimaryClass", ref.category),
         ("Abstract", ref.summary),
@@ -61,7 +62,27 @@ def fix_arxiv2bib_fmt(ref: Reference):
 
 
 def ua_requester_get(*args, **kwargs):
+    """This is so that the APIs get duped into thinking that this script is a browser."""
     ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36"
     if "headers" not in kwargs:
         kwargs["headers"] = {"User-Agent": ua}
     return requests.get(*args, **kwargs)
+
+
+def fix_month(bib_str: str) -> str:
+    """Fixes the string formatting in a bibtex entry"""
+    return (
+        bib_str
+        .replace("{Jan}", "jan").replace("{jan}", "jan")
+        .replace("{Feb}", "feb").replace("{feb}", "feb")
+        .replace("{Mar}", "mar").replace("{mar}", "mar")
+        .replace("{Apr}", "apr").replace("{apr}", "apr")
+        .replace("{May}", "may").replace("{may}", "may")
+        .replace("{Jun}", "jun").replace("{jun}", "jun")
+        .replace("{Jul}", "jul").replace("{jul}", "jul")
+        .replace("{Aug}", "aug").replace("{aug}", "aug")
+        .replace("{Sep}", "sep").replace("{sep}", "sep")
+        .replace("{Oct}", "oct").replace("{oct}", "oct")
+        .replace("{Nov}", "nov").replace("{nov}", "nov")
+        .replace("{Dec}", "dec").replace("{dec}", "dec")
+    )
