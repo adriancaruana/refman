@@ -2,10 +2,25 @@ import hashlib
 import os
 import re
 import requests
+from functools import reduce
 
-from arxiv2bib import Reference
+import bibtexparser
 
 
+MONTHS = [
+    "jan",
+    "feb",
+    "mar",
+    "apr",
+    "may",
+    "jun",
+    "jul",
+    "aug",
+    "sep",
+    "oct",
+    "nov",
+    "dec",
+]
 url_regex = re.compile(
     r"^(?:http|ftp)s?://"  # http:// or https://
     r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
@@ -31,42 +46,41 @@ def is_valid_doi(doi: str):
     return bool(re.match(doi_regex, doi))
 
 
-def fix_arxiv2bib_fmt(ref: Reference):
-    """I don't like the bibtex format from either the arxiv API, or from
-    arxiv2bib, so this function uses the data from arxiv2bib to properly
-    format the bibtex reference the way I like it."""
-    # My preferred format for ID is: 'FirstSurname_Year'
-    id_fmt = f"{ref.authors[0].split(' ')[1]}_{ref.year}"
-    url = ref.url[: ref.url.rfind("v")] if ref.id != ref.bare_id else ref.url
-
-    lines = ["@article{" + id_fmt]
-    for k, v in [
-        ("Author", " and ".join(ref.authors)),
-        ("Title", ref.title),
-        ("Eprint", ref.bare_id),  # The trailing 'vX' is just an annoyance
-        ("DOI", ref.doi),
-        # ("Journal", (f"arXiv preprint {ref.category}")),
-        ("ArchivePrefix", "arXiv"),
-        ("PrimaryClass", ref.category),
-        ("Abstract", ref.summary),
-        ("Year", ref.year),
-        ("Month", ref.month),
-        ("Note", ref.note),
-        ("Url", url),
-        ("File", id_fmt + ".pdf"),
-    ]:
-        if len(v):
-            lines.append("%-13s = {%s}" % (k, v))
-
-    return ("," + os.linesep).join(lines) + os.linesep + "}"
-
-
 def ua_requester_get(*args, **kwargs):
     """This is so that the APIs get duped into thinking that this script is a browser."""
     ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36"
     if "headers" not in kwargs:
         kwargs["headers"] = {"User-Agent": ua}
     return requests.get(*args, **kwargs)
+
+
+def fmt_arxiv_bibtex(arxiv_bib_str: str):
+    """Ensure consistent formatting of arxiv bibtex files"""
+    # My preferred format for ID is: 'FirstSurname_Year'
+    b = bibtexparser.loads(arxiv_bib_str).entries[0]
+    authors = b['author'].split(" and ")
+    first_author_surname = authors[0].split(" ")[-1]
+    id_fmt = f"{first_author_surname}_{b['year']}"
+
+    lines = ["@article{" + id_fmt]
+    for k, v in [
+        ("Author", b['author']),
+        ("Title", b['title']),
+        ("Eprint", b['eprint']),
+        ("DOI", b.get('doi', "")),
+        ("Journal", f"arXiv preprint"),
+        # ("Journal", (f"arXiv preprint {ref.category}")),
+        ("ArchivePrefix", "arXiv"),
+        ("PrimaryClass", b['primaryclass']),
+        ("Year", b['year']),
+        ("Month", MONTHS[int(b['eprint'][2:4]) - 1]),
+        ("Url", f"https://arxiv.org/abs/{b['eprint']}"),
+        ("File", id_fmt + ".pdf"),
+    ]:
+        if len(v):
+            lines.append("    %-13s = {%s}" % (k, v))
+
+    return ("," + os.linesep).join(lines) + os.linesep + "}"
 
 
 def fix_month(bib_str: str) -> str:
@@ -86,3 +100,19 @@ def fix_month(bib_str: str) -> str:
         .replace("{Nov}", "nov").replace("{nov}", "nov")
         .replace("{Dec}", "dec").replace("{dec}", "dec")
     )
+
+
+def _compose(f, g):
+    return lambda *a, **kw: f(g(*a, **kw))
+
+def compose(*fs):
+    return lambda x: reduce(lambda acc, f: f(acc), reversed(fs), x)
+
+def fix_bibtex(bibtex: str):
+    fn = compose(
+        fix_month,
+    )
+    return fn(bibtex)
+    
+
+

@@ -2,6 +2,7 @@ from pathlib import Path
 import os
 
 
+EDITOR = os.getenv("EDITOR", "nano")
 REFMAN_DIR = Path(
     os.getenv("REFMAN_DATA", Path(os.getcwd()) / "refman_data")
 ).absolute()
