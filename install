@@ -1,2 +1,4 @@
 #!/bin/bash
-pytest && python3 setup.py install --user
+python3 -m pip uninstall refman -y && \  # Uninstall old versions
+    pytest && \                          # Run tests
+    python3 setup.py install --user      # Install new version if tests succeed

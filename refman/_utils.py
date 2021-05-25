@@ -58,22 +58,22 @@ def fmt_arxiv_bibtex(arxiv_bib_str: str):
     """Ensure consistent formatting of arxiv bibtex files"""
     # My preferred format for ID is: 'FirstSurname_Year'
     b = bibtexparser.loads(arxiv_bib_str).entries[0]
-    authors = b['author'].split(" and ")
+    authors = b["author"].split(" and ")
     first_author_surname = authors[0].split(" ")[-1]
     id_fmt = f"{first_author_surname}_{b['year']}"
 
     lines = ["@article{" + id_fmt]
     for k, v in [
-        ("Author", b['author']),
-        ("Title", b['title']),
-        ("Eprint", b['eprint']),
-        ("DOI", b.get('doi', "")),
+        ("Author", b["author"]),
+        ("Title", b["title"]),
+        ("Eprint", b["eprint"]),
+        ("DOI", b.get("doi", "")),
         ("Journal", f"arXiv preprint"),
         # ("Journal", (f"arXiv preprint {ref.category}")),
         ("ArchivePrefix", "arXiv"),
-        ("PrimaryClass", b['primaryclass']),
-        ("Year", b['year']),
-        ("Month", MONTHS[int(b['eprint'][2:4]) - 1]),
+        ("PrimaryClass", b["primaryclass"]),
+        ("Year", b["year"]),
+        ("Month", MONTHS[int(b["eprint"][2:4]) - 1]),
         ("Url", f"https://arxiv.org/abs/{b['eprint']}"),
         ("File", id_fmt + ".pdf"),
     ]:
@@ -86,33 +86,43 @@ def fmt_arxiv_bibtex(arxiv_bib_str: str):
 def fix_month(bib_str: str) -> str:
     """Fixes the string formatting in a bibtex entry"""
     return (
-        bib_str
-        .replace("{Jan}", "jan").replace("{jan}", "jan")
-        .replace("{Feb}", "feb").replace("{feb}", "feb")
-        .replace("{Mar}", "mar").replace("{mar}", "mar")
-        .replace("{Apr}", "apr").replace("{apr}", "apr")
-        .replace("{May}", "may").replace("{may}", "may")
-        .replace("{Jun}", "jun").replace("{jun}", "jun")
-        .replace("{Jul}", "jul").replace("{jul}", "jul")
-        .replace("{Aug}", "aug").replace("{aug}", "aug")
-        .replace("{Sep}", "sep").replace("{sep}", "sep")
-        .replace("{Oct}", "oct").replace("{oct}", "oct")
-        .replace("{Nov}", "nov").replace("{nov}", "nov")
-        .replace("{Dec}", "dec").replace("{dec}", "dec")
+        bib_str.replace("{Jan}", "jan")
+        .replace("{jan}", "jan")
+        .replace("{Feb}", "feb")
+        .replace("{feb}", "feb")
+        .replace("{Mar}", "mar")
+        .replace("{mar}", "mar")
+        .replace("{Apr}", "apr")
+        .replace("{apr}", "apr")
+        .replace("{May}", "may")
+        .replace("{may}", "may")
+        .replace("{Jun}", "jun")
+        .replace("{jun}", "jun")
+        .replace("{Jul}", "jul")
+        .replace("{jul}", "jul")
+        .replace("{Aug}", "aug")
+        .replace("{aug}", "aug")
+        .replace("{Sep}", "sep")
+        .replace("{sep}", "sep")
+        .replace("{Oct}", "oct")
+        .replace("{oct}", "oct")
+        .replace("{Nov}", "nov")
+        .replace("{nov}", "nov")
+        .replace("{Dec}", "dec")
+        .replace("{dec}", "dec")
     )
 
 
 def _compose(f, g):
     return lambda *a, **kw: f(g(*a, **kw))
 
+
 def compose(*fs):
     return lambda x: reduce(lambda acc, f: f(acc), reversed(fs), x)
+
 
 def fix_bibtex(bibtex: str):
     fn = compose(
         fix_month,
     )
     return fn(bibtex)
-    
-
-

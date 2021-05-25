@@ -143,9 +143,9 @@ class Paper:
     def new_paper_from_arxiv(cls, arxiv: str, key: str = None):
         """Adds a new paper to the `papers` dir from an arxiv str"""
         update_status(f"{arxiv=}: Retrieving bibtex entry.")
-        bib_str =  ua_requester_get(
-            ARXIV_BIBTEX_URL.format(arxiv=arxiv)
-        ).content.decode("utf-8")
+        bib_str = ua_requester_get(ARXIV_BIBTEX_URL.format(arxiv=arxiv)).content.decode(
+            "utf-8"
+        )
         bib_str = fmt_arxiv_bibtex(bib_str)
         bib_str = cls._fix_bibtex_format(bib_str)
         # Set custom key if requested
@@ -173,10 +173,11 @@ class Paper:
             )
         citeproc_json = dict(r.json())
         update_status(f"{doi=}: Retrieving bibtex entry.")
-        bib_str = cls._fix_bibtex_format(ua_requester_get(
-            CROSSREF_URL.format(doi=doi, fmt=FMT_BIBTEX)
-        ).content.decode("utf-8"))
-        print(bib_str)
+        bib_str = cls._fix_bibtex_format(
+            ua_requester_get(
+                CROSSREF_URL.format(doi=doi, fmt=FMT_BIBTEX)
+            ).content.decode("utf-8")
+        )
         update_status(f"{doi=}: Retrieving PDF.")
         pdf_data = None
         if pdf is not None:
@@ -188,7 +189,6 @@ class Paper:
             bib_str = cls._update_bibtex_str_key(bib_str, key)
         # Prepare the Paper object
         meta = dict(bibtexparser.loads(bib_str, cls._parser()).entries[0])
-        print(meta)
         paper = Paper(meta=meta, bibtex=bib_str, pdf_data=pdf_data)
         paper.to_disk()
         return paper
@@ -312,8 +312,9 @@ class RefMan:
 
     def _get_paper_meta(self, paper: Paper) -> dict:
         return {
-            "doi": paper.meta.get("doi", ""),  # For parsing via DOI
-            "eprint": paper.meta.get("eprint", ""),  # For parsing via arxiv
+            "doi": paper.meta.get("doi", "").lower(),  # For parsing via DOI
+            "eprint": paper.meta.get("eprint", ""),  # For parsing via arxiv,
+            "paper_path": str(paper.paper_path),
             "bibtex_path": str(paper.bibtex_path),
             "bibtex_key": str(paper._bibtex_key),
         }
@@ -325,25 +326,35 @@ class RefMan:
         self.db = self.db[self.db[column] != value]
 
     def add_using_arxiv(self, arxiv: str, key: str = None):
-        if arxiv is not None and arxiv not in list(self.db.get("eprint", list())):
-            paper = Paper.new_paper_from_arxiv(arxiv, key)
-            self.append_to_db(paper)
-
+        if (
+            not arxiv
+            or not arxiv[:4].isnumeric()
+            or not arxiv[5:].isnumeric()
+            or arxiv[4] != "."
+        ):
+            raise ValueError(f"Invalid {arxiv=}")
+        if arxiv in list(self.db.get("eprint", list())):
+            logging.info(f"{arxiv=} already in DB. Nothing to do.")
+            path = self.db[self.db["eprint"] == doi.lower()].iloc[0]["paper_path"]
+            paper = Paper.parse_from_disk(Path(path))
+            return paper.meta.get("ID", "")
+        paper = Paper.new_paper_from_arxiv(arxiv, key)
+        self.append_to_db(paper)
         self._update_db()
         return paper.meta.get("ID", "")
 
     def add_using_doi(self, doi: str, key: str, pdf: str):
-        if doi is None:
-            ValueError(f"Nothing to do for {doi=}")
-        if doi.lower() in map(
-            lambda x: x.lower(), self.db.get("doi", list())
-        ):
-            ValueError(f"{doi=} already in DB. Nothing to do.")
+        if not doi:
+            raise ValueError(f"Invalid: {doi=}")
+        if doi.lower() in list(self.db.get("doi", list())):
+            logging.info(f"{doi=} already in DB. Nothing to do.")
+            path = self.db[self.db["doi"] == doi.lower()].iloc[0]["paper_path"]
+            paper = Paper.parse_from_disk(Path(path))
+            return paper.meta.get("ID", "")
         paper = Paper.new_paper_from_doi(doi, key, pdf)
         self.append_to_db(paper)
         self._update_db()
         return paper.meta.get("ID", "")
-    
 
     def add_using_bibtex(self, bibtex_str: str, pdf_path: str, key: str = None):
         paper = Paper.new_paper_from_bibtex(
@@ -387,7 +398,7 @@ class RefMan:
         paper_path = paper_path_li[0]
         old_paper = Paper.parse_from_disk(paper_path)
         subprocess.call([EDITOR, old_paper.bibtex_path])
-        with open(old_paper.bibtex_path, 'r') as f:
+        with open(old_paper.bibtex_path, "r") as f:
             new_bibtex = f.read()
         if new_bibtex == old_paper.bibtex:
             LOGGER.warning(
@@ -395,9 +406,7 @@ class RefMan:
                 "Therefore, there is nothing to do, because the metadata hasn't changed."
             )
             return old_paper.meta.get("ID", "")
-        LOGGER.info(
-            "Found changes in {old_paper.bibtex_path}. Re-hashing and moving."
-        )
+        LOGGER.info("Found changes in {old_paper.bibtex_path}. Re-hashing and moving.")
         pdf_path = old_paper.pdf_path if old_paper.pdf_path.exists() else None
         new_paper = Paper.new_paper_from_bibtex(
             bibtex_str=new_bibtex, pdf_path=pdf_path

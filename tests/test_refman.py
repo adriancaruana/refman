@@ -57,6 +57,12 @@ class TestDoi:
         with pytest.raises(StopIteration):
             # There should not be any PDF files
             next(REFMAN_DATA.rglob("*.pdf"))
+        with pytest.raises(ValueError):
+            doi(doi="0")
+        with pytest.raises(ValueError):
+            doi(doi="abcd")
+        with pytest.raises(ValueError):
+            doi(doi="")
 
     @responses.activate
     def test_doi_with_key(self):
@@ -73,8 +79,12 @@ class TestDoi:
         assert pdf.exists()
         doi(doi=DOI, key=None, pdf=str(pdf))
         assert pyperclip.paste() == "\\cite{Wasserman_2018}"
-        ref = hashlib.md5(open(Path(__file__).parent / 'test.pdf','rb').read()).hexdigest()
-        src = hashlib.md5(open(next(REFMAN_DATA.rglob("*.pdf")),'rb').read()).hexdigest()
+        ref = hashlib.md5(
+            open(Path(__file__).parent / "test.pdf", "rb").read()
+        ).hexdigest()
+        src = hashlib.md5(
+            open(next(REFMAN_DATA.rglob("*.pdf")), "rb").read()
+        ).hexdigest()
         assert ref == src
 
 
@@ -85,9 +95,19 @@ class TestArxiv:
             responses.add(responses.GET, k, v, status=200)
         arxiv(arxiv=ARXIV, key=None)
         assert pyperclip.paste() == "\\cite{Bronstein_2021}"
-        ref = hashlib.md5(open(Path(__file__).parent / 'test.pdf','rb').read()).hexdigest()
-        src = hashlib.md5(open(next(REFMAN_DATA.rglob("*.pdf")),'rb').read()).hexdigest()
+        ref = hashlib.md5(
+            open(Path(__file__).parent / "test.pdf", "rb").read()
+        ).hexdigest()
+        src = hashlib.md5(
+            open(next(REFMAN_DATA.rglob("*.pdf")), "rb").read()
+        ).hexdigest()
         assert ref == src
+        with pytest.raises(ValueError):
+            arxiv(arxiv=None, key=None)
+        with pytest.raises(ValueError):
+            arxiv(arxiv="", key=None)
+        with pytest.raises(ValueError):
+            arxiv(arxiv="abcd.1234", key=None)
 
     @responses.activate
     def test_arxiv_with_key(self):
@@ -95,8 +115,12 @@ class TestArxiv:
             responses.add(responses.GET, k, v, status=200)
         arxiv(arxiv=ARXIV, key="TestKey_2001")
         assert pyperclip.paste() == "\\cite{TestKey_2001}"
-        ref = hashlib.md5(open(Path(__file__).parent / 'test.pdf','rb').read()).hexdigest()
-        src = hashlib.md5(open(next(REFMAN_DATA.rglob("*.pdf")),'rb').read()).hexdigest()
+        ref = hashlib.md5(
+            open(Path(__file__).parent / "test.pdf", "rb").read()
+        ).hexdigest()
+        src = hashlib.md5(
+            open(next(REFMAN_DATA.rglob("*.pdf")), "rb").read()
+        ).hexdigest()
         assert ref == src
 
 
@@ -120,8 +144,12 @@ class TestBibtex:
         assert pdf.exists()
         bibtex(bibtex=BIBTEX, key=None, pdf=pdf)
         assert pyperclip.paste() == "\\cite{Wasserman_2018}"
-        ref = hashlib.md5(open(Path(__file__).parent / 'test.pdf','rb').read()).hexdigest()
-        src = hashlib.md5(open(next(REFMAN_DATA.rglob("*.pdf")),'rb').read()).hexdigest()
+        ref = hashlib.md5(
+            open(Path(__file__).parent / "test.pdf", "rb").read()
+        ).hexdigest()
+        src = hashlib.md5(
+            open(next(REFMAN_DATA.rglob("*.pdf")), "rb").read()
+        ).hexdigest()
         assert ref == src
 
 
@@ -145,24 +173,24 @@ class TestRm:
 class TestMedit:
     def test_medit_noaction(self, monkeypatch):
         bibtex(bibtex=BIBTEX, key=None, pdf=None)
+
         def dummyfn(*a, **kw):
-            return 0    
-        monkeypatch.setattr(subprocess, "call", dummyfn) 
+            return 0
+
+        monkeypatch.setattr(subprocess, "call", dummyfn)
         medit("Wasser")
 
     def test_medit_edit(self, monkeypatch):
         bibtex(bibtex=BIBTEX, key=None, pdf=None)
+
         def dummyfn(*a, **kw):
             f = next(REFMAN_DATA.rglob("*/.bib"))
-            old_bibtex = open(f, 'r').read()
+            old_bibtex = open(f, "r").read()
             new_bibtex = old_bibtex.replace("Wasserman_2018", "TestKey_2004")
-            open(f, 'w').write(new_bibtex)
-            print(f, "\n", open(f, 'r').read())
+            open(f, "w").write(new_bibtex)
+            print(f, "\n", open(f, "r").read())
             return 0
-        monkeypatch.setattr(subprocess, "call", dummyfn) 
+
+        monkeypatch.setattr(subprocess, "call", dummyfn)
         medit("Wasser")
         assert pyperclip.paste() == "\\cite{TestKey_2004}"
-
-        
-        
-        
