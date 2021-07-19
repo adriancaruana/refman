@@ -1,0 +1,2 @@
+recursive-include refman/templates *
+recursive-include refman/static *

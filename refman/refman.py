@@ -27,6 +27,7 @@ from ._constants import (
     BIB_REF,
     META_NAME,
     BIBTEX_NAME,
+    NOTES_NAME,
     CROSSREF_URL,
     ARXIV_BIBTEX_URL,
     ARXIV_PDF_URL,
@@ -41,6 +42,7 @@ from ._utils import (
     fix_bibtex,
     ua_requester_get,
 )
+from ._app import init_flask_app
 from ._scihub import SciHub
 
 STATUS_HANDLER = None
@@ -77,8 +79,10 @@ class Paper:
     meta: dict
     bibtex: str
     pdf_data: bytes = dataclasses.field(default=None)
+    notes_data: str = dataclasses.field(default=None)
     meta_name: str = dataclasses.field(init=False, default=META_NAME)
     bibtex_name: str = dataclasses.field(init=False, default=BIBTEX_NAME)
+    notes_name: str = dataclasses.field(init=False, default=NOTES_NAME)
 
     @property
     def paper_path(self):
@@ -95,6 +99,10 @@ class Paper:
     @property
     def pdf_path(self):
         return self.paper_path / (self._bibtex_key + ".pdf")
+
+    @property
+    def notes_path(self):
+        return self.paper_path / self.notes_name
 
     @property
     def _bibtex_key(self) -> str:
@@ -128,6 +136,9 @@ class Paper:
             meta = json.load(f)
         with open(paper_path / cls.bibtex_name, "r") as f:
             bibtex = f.read()
+        notes = None
+        if (paper_path / cls.notes_name).exists():
+            notes = (paper_path / cls.notes_name).read_text()
         pdf_data = None
         if read_pdf:
             try:
@@ -137,7 +148,7 @@ class Paper:
                 update_status(f"{paper_path}: No PDF found.")
             with open(paper_path / pdf_path, "wb") as f:
                 pdf_data = f.read()
-        return cls(meta=meta, bibtex=bibtex, pdf_data=pdf_data)
+        return cls(meta=meta, bibtex=bibtex, pdf_data=pdf_data, notes_data=notes)
 
     @classmethod
     def new_paper_from_arxiv(cls, arxiv: str, key: str = None):
@@ -175,7 +186,7 @@ class Paper:
         update_status(f"{doi=}: Retrieving bibtex entry.")
         bib_str = cls._fix_bibtex_format(
             ua_requester_get(
-                CROSSREF_URL.format(doi=doi, fmt=FMT_BIBTEX)
+                CROSSREF_URL.format(doi=doi.lower(), fmt=FMT_BIBTEX)
             ).content.decode("utf-8")
         )
         update_status(f"{doi=}: Retrieving PDF.")
@@ -282,6 +293,9 @@ class Paper:
             json.dump(self.meta, f)
         with open(self.bibtex_path, "w") as f:
             f.write(self.bibtex)
+        if self.notes_data is not None and len(self.notes_data) > 0:
+            with open(self.notes_path, "w") as f:
+                f.write(self.notes_data)
         if self.pdf_data is not None and len(self.pdf_data) > 0:
             with open(self.pdf_path, "wb") as f:
                 f.write(self.pdf_data)
@@ -312,11 +326,13 @@ class RefMan:
 
     def _get_paper_meta(self, paper: Paper) -> dict:
         return {
+            "year": paper.meta.get("year", ""),
+            "bibtex_key": str(paper._bibtex_key),
+            "title": paper.meta.get("title", ""),
             "doi": paper.meta.get("doi", "").lower(),  # For parsing via DOI
             "eprint": paper.meta.get("eprint", ""),  # For parsing via arxiv,
             "paper_path": str(paper.paper_path),
             "bibtex_path": str(paper.bibtex_path),
-            "bibtex_key": str(paper._bibtex_key),
         }
 
     def append_to_db(self, paper: Paper):
@@ -501,6 +517,15 @@ def rm(key: str):
     """Removes a paper from the disk and database."""
     typer.echo(f"Attempting to remove paper with key:")
     new_citation = RefMan().remove_paper(key=key, allow_wildcard=True)
+
+
+@APP.command()
+def app():
+    """Starts the RefMan Server for viewing references."""
+    typer.echo(f"Starting the RefMan Viewer app.")
+    refman = RefMan()
+    flask_app = init_flask_app(references=refman.db)
+    flask_app.run(debug=True)
 
 
 if __name__ == "__main__":

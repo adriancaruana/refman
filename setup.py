@@ -1,5 +1,5 @@
 import pathlib
-from setuptools import setup
+from setuptools import setup, find_packages
 
 # The directory containing this file
 HERE = pathlib.Path(__file__).parent
@@ -25,10 +25,13 @@ setup(
     packages=["refman"],
     keywords=["Reference", "Manager", "BibTeX", "crossref"],
     include_package_data=True,
+    zip_safe=False,
+    # data_files=[("refman/templates", ["refman/templates/index.html"])],
     install_requires=[
         "arxiv2bib",
         "bibtexparser",
         "bs4",
+        "flask",
         "numpy",
         "pandas",
         "pyperclip",
