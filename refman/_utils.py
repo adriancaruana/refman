@@ -7,6 +7,8 @@ from functools import reduce
 import bibtexparser
 
 
+PARSER = bibtexparser.bparser.BibTexParser(common_strings=True)
+
 MONTHS = [
     "jan",
     "feb",
@@ -112,6 +114,17 @@ def fix_month(bib_str: str) -> str:
         .replace("{dec}", "dec")
     )
 
+def fix_id(bib_str: str) -> str:
+    _b = bibtexparser.loads(bib_str, parser=PARSER)
+    b = _b.entries[0]
+    if not b["ID"].isnumeric():
+        return bib_str
+    authors = b["author"].split(" and ")
+    first_surname = authors[0].split(" ")[-1]
+    year = b["year"]
+    _b.entries[0]["ID"] = f"{first_surname}_{year}"
+    return bibtexparser.dumps(_b)
+
 
 def _compose(f, g):
     return lambda *a, **kw: f(g(*a, **kw))
@@ -124,5 +137,6 @@ def compose(*fs):
 def fix_bibtex(bibtex: str):
     fn = compose(
         fix_month,
+        fix_id,
     )
     return fn(bibtex)
