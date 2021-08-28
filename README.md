@@ -28,6 +28,12 @@ Adding new papers to `refman_data` can be achieved in three ways:
 
 ## Installing
 
+With pip:
+```bash
+python3 -m pip install refman
+```
+Or manually:
+
 ```bash
 git clone https://https://github.com/adriancaruana/refman
 cd refman
