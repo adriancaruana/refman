@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 from typing import Iterable, List, Tuple
+import webbrowser
 
 from arxiv2bib import arxiv2bib
 import bibtexparser
@@ -336,7 +337,8 @@ class RefMan:
         }
 
     def append_to_db(self, paper: Paper):
-        self.db = self.db.append(self._get_paper_meta(paper), ignore_index=True)
+        # self.db = self.db.append(self._get_paper_meta(paper), ignore_index=True)
+        self.db = pd.concat([self.db, pd.DataFrame([paper])])
 
     def remove_from_db(self, column: str, value: str):
         self.db = self.db[self.db[column] != value]
@@ -351,7 +353,7 @@ class RefMan:
             raise ValueError(f"Invalid {arxiv=}")
         if arxiv in list(self.db.get("eprint", list())):
             logging.info(f"{arxiv=} already in DB. Nothing to do.")
-            path = self.db[self.db["eprint"] == doi.lower()].iloc[0]["paper_path"]
+            path = self.db[self.db["eprint"] == arxiv.lower()].iloc[0]["paper_path"]
             paper = Paper.parse_from_disk(Path(path))
             return paper.meta.get("ID", "")
         paper = Paper.new_paper_from_arxiv(arxiv, key)
@@ -525,6 +527,7 @@ def app():
     typer.echo(f"Starting the RefMan Viewer app.")
     refman = RefMan()
     flask_app = init_flask_app(references=refman.db)
+    webbrowser.open("http://127.0.0.1:5000/")
     flask_app.run(debug=True)
 
 

@@ -11,7 +11,7 @@ def init_flask_app(references: pd.DataFrame):
     def index():
         return render_template(
             "index.html",
-            data=references.to_html(table_id="references")
+            data=references.to_html(table_id="references", classes="table table-striped table-hover")
         )
 
     return app
