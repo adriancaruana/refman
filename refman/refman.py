@@ -337,8 +337,7 @@ class RefMan:
         }
 
     def append_to_db(self, paper: Paper):
-        # self.db = self.db.append(self._get_paper_meta(paper), ignore_index=True)
-        self.db = pd.concat([self.db, pd.DataFrame([paper])])
+        self.db = pd.concat([self.db, pd.DataFrame([self._get_paper_meta(paper)])])
 
     def remove_from_db(self, column: str, value: str):
         self.db = self.db[self.db[column] != value]

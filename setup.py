@@ -27,18 +27,7 @@ setup(
     include_package_data=True,
     zip_safe=False,
     # data_files=[("refman/templates", ["refman/templates/index.html"])],
-    install_requires=[
-        "arxiv2bib",
-        "bibtexparser",
-        "bs4",
-        "flask",
-        "numpy",
-        "pandas",
-        "pyperclip",
-        "retrying",
-        "tqdm",
-        "typer",
-    ],
+    # install_requires=[    ],
     entry_points={
         "console_scripts": [
             "refman=refman.refman:APP",

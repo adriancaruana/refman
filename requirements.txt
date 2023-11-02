@@ -1,0 +1,11 @@
+arxiv2bib
+bibtexparser==1.4.1
+bs4
+flask
+numpy
+pandas
+pyperclip
+responses
+retrying
+tqdm
+typer
